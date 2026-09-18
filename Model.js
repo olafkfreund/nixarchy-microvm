@@ -1054,8 +1054,23 @@ function logsArgv(name) {
   return isReportedName(name) ? tui("logs", ["journalctl", "-u", "microvm@" + name, "-n", "200", "-f"]) : null
 }
 
-function sshArgv(port) {
-  return isPort(port) && trim(port) !== "" ? tui("console", ["ssh", "-p", trim(port), "dev@localhost"]) : null
+// The key picked in the form may not be one ssh offers by default, so the
+// console names it: the .pub whose content matches the row's key, minus
+// ".pub". No match (or no scan yet) falls back to ssh's own identities.
+function sshArgv(port, sshKey, keys, home) {
+  if (!isPort(port) || trim(port) === "") return null
+  var argv = ["ssh", "-p", trim(port)]
+  var want = normalizeSshKey(sshKey)
+  var h = trim(home).replace(/\/+$/, "")
+  for (var i = 0; want && h && keys && i < keys.length; i++) {
+    var f = String(keys[i].file || "")
+    if (keys[i].key === want && /^[A-Za-z0-9._-]+\.pub$/.test(f)) {
+      argv.push("-i", h + "/.ssh/" + f.slice(0, -4), "-o", "IdentitiesOnly=yes")
+      break
+    }
+  }
+  argv.push("dev@localhost")
+  return tui("console", argv)
 }
 
 function optSetArgv(pkg, name, snippet) {

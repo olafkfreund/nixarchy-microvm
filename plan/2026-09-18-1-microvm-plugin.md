@@ -491,6 +491,16 @@ in the same commit.
    command and make a VM look absent (`demo-new` survived one teardown);
    fixed to a full read, and the stray VM removed by hand.
 
+9. **After step 15, live p1 checks: Enter names the picked key.** The
+   decisions table gave permanent Enter as `ssh -p <port> dev@localhost`.
+   Live on p620 that failed with "Permission denied" whenever the key picked
+   in the form was not one ssh offers by default (here
+   `bbs_agent_ed25519.pub`). `Model.sshArgv(port, sshKey, keys, home)` now
+   adds `-i ~/.ssh/<file without .pub> -o IdentitiesOnly=yes` when the row's
+   key matches a scanned `~/.ssh/*.pub` whose name is a plain
+   `[A-Za-z0-9._-]+.pub`; otherwise ssh's defaults, as before. One test
+   (`commands`), 63 passed.
+
 ### Test results
 
 - **Steps 1-6, Node:** `node tests/run.js` → 62 passed, 0 failed (parsing,
@@ -557,3 +567,14 @@ in the same commit.
   `#@ microvm` row re-commented; `apps.nix` and `services.nix` are
   byte-identical to their pre-step-7 backups, `nixarchy-pkg pending` is 0.
   The dev copy stays at `~/.config/omarchy/plugins/nixarchy.microvm`.
+
+**Live, permanent VM on a real unit (after the p620 rebuild, 2026-09-18).**
+`microvm@p1` (shell, port 2222, key, `autostart = false`): start → 0 (polkit
+prompt answered on screen), plugin row `permanent:p1 running managed`; the
+unit's journal read without a prompt, guest booted with sshd; the plugin's
+`sshArgv` with the scanned keys → `in guest: p1 as dev`; restart → 0, active
+again; stop → 0, row `permanent:p1 stopped managed`. Pending before this
+rebuild, now passed: `s`, `r`, `l` and Enter on a real `microvm@` unit.
+Still pending on upstream: streamed `run --detach`, Enter on a running
+disposable VM, disposable `m` (nixarchy#762), permanent `m`
+(nixarchy-pkg#19).

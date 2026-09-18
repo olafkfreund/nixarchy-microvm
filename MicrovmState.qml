@@ -292,7 +292,7 @@ Singleton {
 
   function console_(row) {
     if (!Model.actionFor(row, root.featureState, "console")) return false
-    return detach(row.kind === "permanent" ? Model.sshArgv(row.sshPort) : Model.consoleArgv(row.name))
+    return detach(row.kind === "permanent" ? Model.sshArgv(row.sshPort, row.sshKey, root.sshKeys, root.home) : Model.consoleArgv(row.name))
   }
 
   // "Start in terminal": today's `nixarchy vm run`, held by that terminal.

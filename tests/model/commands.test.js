@@ -67,6 +67,19 @@ test("terminal commands go through omarchy-launch-tui with a fixed app id", () =
   eq(Model.optSetArgv(PKG, "p9", "{ x }"), [PKG, "opt", "set", "programs.nixarchy.services.microvm.machines.p9", "{ x }"])
 })
 
+test("sshArgv names the picked key's private half, and only a matching, safe .pub", () => {
+  const K = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyExampleKeyExampleKeyExampleK"
+  const keys = [{ file: "id_ed25519.pub", key: "ssh-ed25519 AAAAOTHER" }, { file: "bbs_agent_ed25519.pub", key: K }]
+  const head = ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-console", "ssh", "-p", "2222"]
+  eq(Model.sshArgv("2222", K + " me@host", keys, "/home/u/"),
+    head.concat(["-i", "/home/u/.ssh/bbs_agent_ed25519", "-o", "IdentitiesOnly=yes", "dev@localhost"]))
+  // No match, no scan, no home, or a file name that is not a plain .pub: ssh's defaults.
+  eq(Model.sshArgv("2222", "ssh-ed25519 AAAANOPE", keys, "/home/u"), head.concat(["dev@localhost"]))
+  eq(Model.sshArgv("2222", K, [], "/home/u"), head.concat(["dev@localhost"]))
+  eq(Model.sshArgv("2222", K, keys, ""), head.concat(["dev@localhost"]))
+  eq(Model.sshArgv("2222", K, [{ file: "../x.pub", key: K }], "/home/u"), head.concat(["dev@localhost"]))
+})
+
 test("submitArgvs: create is one command, a new permanent VM is the service row then its line", () => {
   const HOME = "/home/user"
   const d = Object.assign(Model.emptyForm("disposable"), { name: "t1", template: "python" })
