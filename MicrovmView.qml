@@ -73,7 +73,40 @@ FocusScope {
   // lands straight in the form (IPC create) keeps the form's focus.
   function focusForMode() {
     if (root.mode === "log") logView.forceActiveFocus()
+    else if (root.mode === "form") createForm.focusCurrent()
+    else if (root.mode === "review") review.forceActiveFocus()
     else keyCatcher.forceActiveFocus()
+  }
+
+  // c, IPC create, or the menu's {"create":true}.
+  function openForm(kind) {
+    root.mode = "form"
+    root.helpOpen = false
+    createForm.start(kind || "disposable")
+  }
+
+  // m on a row: the template of a disposable VM, every field of a
+  // permanent one.
+  function openEdit(row) {
+    root.mode = "form"
+    root.helpOpen = false
+    createForm.startEdit(row)
+  }
+
+  // A permanent form, valid: show the exact line and the commands first.
+  property var reviewForm: null
+  readonly property string reviewSnippet: reviewForm ? (Model.machineSnippet(reviewForm, MicrovmState.allRows, MicrovmState.templates, MicrovmState.home) || "") : ""
+  readonly property var reviewArgvs: reviewForm ? (Model.submitArgvs(reviewForm, MicrovmState.allRows, MicrovmState.templates, MicrovmState.home, root.features) || []) : []
+
+  function openReview(form) {
+    root.reviewForm = form
+    setMode("review")
+  }
+
+  function submitForm(form) {
+    root.reviewForm = null
+    MicrovmState.submit(form)
+    setMode("list")
   }
 
   // o: back to whatever the last build printed. Nothing to show until a
@@ -108,6 +141,7 @@ FocusScope {
     if (verb === "logs") { if (MicrovmState.logs(row)) root.closeRequested(); return }
     if (verb === "copy") { MicrovmState.copyName(row.name); return }
     if (verb === "remove") { askRemove(row); return }
+    if (verb === "edit") { if (Model.actionFor(row, root.features, "edit")) openEdit(row); return }
     if (verb === "start") { if (MicrovmState.start(row) && row.kind === "disposable") setMode("log") }
     else if (verb === "stop") MicrovmState.stop(row)
     else if (verb === "restart") MicrovmState.restart(row)
@@ -188,6 +222,7 @@ FocusScope {
     if (key === "u") { MicrovmState.refresh(); return }
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
+    if (key === "c") { openForm("disposable"); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -294,6 +329,103 @@ FocusScope {
               hoverColor: Color.accent
               fontFamily: root.fontFamily
               onClicked: root.apply()
+            }
+          }
+        }
+
+        CreateForm {
+          id: createForm
+          visible: root.mode === "form"
+          width: parent.width
+          height: visible ? implicitHeight : 0
+          rows: MicrovmState.allRows
+          templates: MicrovmState.templates
+          sshKeys: MicrovmState.sshKeys
+          features: root.features
+          hostHome: MicrovmState.home
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onSubmitted: function(form) { root.submitForm(form) }
+          onReviewRequested: function(form) { root.openReview(form) }
+          onCanceled: root.setMode("list")
+        }
+
+        // The review: what a permanent VM's line will be, and what runs.
+        FocusScope {
+          id: review
+          visible: root.mode === "review"
+          width: parent.width
+          height: visible ? implicitHeight : 0
+          implicitHeight: reviewColumn.implicitHeight
+
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) { root.setMode("form"); Qt.callLater(createForm.focusCurrent); event.accepted = true }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitForm(root.reviewForm); event.accepted = true }
+          }
+
+          Column {
+            id: reviewColumn
+            width: parent.width
+            spacing: Style.spacing.md
+
+            Text {
+              width: parent.width
+              text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+            }
+
+            Text {
+              width: parent.width
+              text: "This line goes into ~/.config/nixarchy/apps.nix:"
+              textFormat: Text.PlainText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              width: parent.width
+              text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
+              textFormat: Text.PlainText
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WrapAnywhere
+            }
+
+            Text {
+              width: parent.width
+              text: "Runs: " + root.reviewArgvs.map(function(a) { return a.slice(0, 4).map(function(x) { return x.indexOf("/") === 0 ? "nixarchy-pkg" : x }).join(" ") }).join(", then ")
+              textFormat: Text.PlainText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              width: parent.width
+              text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
+              textFormat: Text.PlainText
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              width: parent.width
+              horizontalAlignment: Text.AlignRight
+              text: "enter write it   esc back to the form"
+              textFormat: Text.PlainText
+              color: root.foreground
+              opacity: 0.65
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
             }
           }
         }

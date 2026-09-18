@@ -64,6 +64,10 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function refresh(): void { MicrovmState.refresh() }
+    function create(): void {
+      root.open()
+      view.openForm("disposable")
+    }
     function status(): string { return MicrovmState.statusJson() }
   }
 
