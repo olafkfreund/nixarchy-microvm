@@ -48,8 +48,7 @@ test("parseUnits keeps the instance name and the two state words", () => {
 test("parseMachineLines tells our lines from the ones it must not touch", () => {
   const lines = Model.parseMachineLines(APPS_NIX)
   eq(lines.map(l => [l.name, l.ownership]), [
-    // p1's value is the full grammar; it becomes managed once the grammar parser lands (plan step 4).
-    ["p1", Model.parseMachineSnippet("{ template = \"shell\"; }") === null ? "managed-unsupported" : "managed"],
+    ["p1", "managed"],                // the full grammar, as opt set wrote it
     ["p4", "managed-unsupported"],   // a hand-added `modules = [ ./mine.nix ]`
     ["p7", "managed-unsupported"]    // the marker says p7, the assignment says p6
   ])

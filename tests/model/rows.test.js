@@ -48,7 +48,7 @@ test("rowsFor derives status and subtitle per row", () => {
 test("filterRows matches name, template and kind, case-insensitively", () => {
   const rows = disposable().concat(permanent())
   eq(Model.rowNames(Model.filterRows(rows, "BOB")), ["bob"])
-  eq(Model.rowNames(Model.filterRows(rows, "python")), ["bob"])
+  eq(Model.rowNames(Model.filterRows(rows, "python")), ["bob", "p1"])
   ok(Model.filterRows(rows, "perm").every(r => r.kind === "permanent"))
   eq(Model.filterRows(rows, "  ").length, rows.length)
 })

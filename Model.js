@@ -610,13 +610,352 @@ function settingsFor(barConfig, id, defaults) {
   return result
 }
 
+// ---------------------------------------------------------------- validation
+//
+// Everything a user (or the agent) types ends up in one of two places: an
+// argv slot for nixarchy-vm, or inside the one Nix line written to apps.nix.
+// Each field is checked against what is safe in *its* spot, never against a
+// blocklist of "bad" characters. Nothing here needs shell quoting, because
+// nothing here goes through a shell: nixarchy-pkg's `opt set` takes the
+// value as one argv element and parse-checks the file afterwards.
+
+// Creation is stricter than isReportedName. A permanent name is a systemd
+// instance, a hostname and an unquoted Nix attribute at once, and `_` is not
+// legal in a hostname. A disposable name keeps the CLI's set but starts with
+// a letter, so it can never look like an option.
+function isVmName(value, kind) {
+  var text = String(value === undefined || value === null ? "" : value)
+  return kind === "permanent"
+    ? /^[a-z][a-z0-9-]{0,31}$/.test(text)
+    : /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(text)
+}
+
+function isTemplate(value, templates) {
+  return isTemplateName(value) && templateNames(templates).indexOf(String(value)) !== -1
+}
+
+function isInteger(value, min, max) {
+  var text = trim(value)
+  if (!/^[0-9]{1,7}$/.test(text)) return false
+  var n = parseInt(text, 10)
+  return n >= min && n <= max
+}
+
+var MEMORY_MIN = 256, MEMORY_MAX = 131072, CORES_MAX = 64
+
+function isMiB(value) { return isInteger(value, MEMORY_MIN, MEMORY_MAX) }
+function isCores(value) { return isInteger(value, 1, CORES_MAX) }
+function isPort(value) { return trim(value) === "" || isInteger(value, 1024, 65535) }
+
+// ponytail: no spaces or quotes in paths. A path is written inside "…" in
+// Nix, where only " \ and ${ act, and none of them is in this set.
+function isPath(value) {
+  return /^(\/|~\/)[A-Za-z0-9_.\/+-]*$/.test(String(value || "")) && String(value).length <= 4096
+}
+
+function expandHome(path, hostHome) {
+  var text = String(path || "")
+  var host = trim(hostHome).replace(/\/+$/, "")
+  return text.indexOf("~/") === 0 && host ? host + text.substring(1) : text
+}
+
+// The guest side of a share, normalised before it is judged: "/mnt//src/"
+// and "/mnt/src" are the same mount point, and "/nix/../etc" must not slip
+// past the reserved list by spelling. Null when it cannot be made canonical.
+function normalizeGuestPath(value) {
+  var text = String(value || "")
+  if (text.charAt(0) !== "/" || !isPath(text)) return null
+  var parts = text.split("/")
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "") continue
+    if (parts[i] === "." || parts[i] === "..") return null
+    out.push(parts[i])
+  }
+  return "/" + out.join("/")
+}
+
+// What modules/microvm/guest.nix already mounts, and the root itself.
+function isReservedGuest(path) {
+  return path === "/" || path === "/nix" || path.indexOf("/nix/") === 0 || path === "/mnt/host"
+}
+
+var BUILTIN_TAGS = ["ro-store", "hostdir"]
+
+function tokens(value) {
+  var text = trim(value)
+  return text ? text.split(/\s+/) : []
+}
+
+// "host:guest host2:guest2" → [{source, mountPoint}] with ~ expanded and the
+// guest path canonical, or null with the first reason in `error`.
+function parseShares(value, hostHome) {
+  var list = tokens(value)
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var parts = list[i].split(":")
+    if (parts.length !== 2) return { error: "Each share is host:guest" }
+    if (!isPath(parts[0])) return { error: "Host paths are absolute or ~/…, using " + PATH_CHARS }
+    var guest = normalizeGuestPath(parts[1])
+    if (!guest) return { error: "Guest paths are absolute, with no . or .. segments" }
+    if (isReservedGuest(guest)) return { error: guest + " is already used inside the guest" }
+    out.push({ source: expandHome(parts[0], hostHome), mountPoint: guest })
+  }
+  return { shares: out }
+}
+
+// One virtiofs tag per share: the mount point's basename, suffixed when two
+// shares would collide, and never one guest.nix already uses.
+function shareTags(shares) {
+  var used = BUILTIN_TAGS.slice()
+  var out = []
+  for (var i = 0; i < (shares || []).length; i++) {
+    var base = shares[i].mountPoint.replace(/\/+$/, "").split("/").pop() || "share"
+    var tag = base
+    for (var n = 2; used.indexOf(tag) !== -1; n++) tag = base + "-" + n
+    used.push(tag)
+    out.push(tag)
+  }
+  return out
+}
+
+// A public key as ssh-keygen writes it: type, base64, and a comment we drop.
+// Only the first two words are kept, so the line inside "…" in Nix can hold
+// nothing but this character set.
+var SSH_KEY = /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa|sk-ssh-ed25519@openssh\.com) ([A-Za-z0-9+\/]+={0,3})(\s|$)/
+
+function normalizeSshKey(value) {
+  var m = String(value || "").replace(/^\s+/, "").match(SSH_KEY)
+  return m ? m[1] + " " + m[3] : ""
+}
+
+function isSshKey(value) {
+  return normalizeSshKey(value) !== ""
+}
+
+function hasControlChars(value) {
+  return /[\x00-\x1f\x7f]/.test(String(value || ""))
+}
+
+function isDescribe(value) {
+  var text = String(value || "")
+  return text.length <= 500 && !hasControlChars(text)
+}
+
+// ---------------------------------------------------------------- form
+
+var PATH_CHARS = "letters, digits and _ . / + -"
+
+// Every value a string or a bool, so the QML text fields can bind to it and
+// the agent's typed reply is converted before it lands here.
+function emptyForm(kind) {
+  return {
+    editing: false,
+    describe: "",
+    kind: kind === "permanent" ? "permanent" : "disposable",
+    name: "",
+    template: "shell",
+    autostart: true,
+    memory: "1024",
+    cores: "1",
+    sshPort: "",
+    sshKey: "",
+    shares: ""
+  }
+}
+
+// The form for `m` on a row: what its line says, with the name fixed.
+function formFromRow(row) {
+  var f = emptyForm(row.kind)
+  f.editing = true
+  f.name = row.name
+  f.template = row.template || "shell"
+  if (row.kind === "permanent") {
+    f.autostart = row.autostart !== false
+    f.memory = String(row.memory || "1024")
+    f.cores = String(row.cores || "1")
+    f.sshPort = String(row.sshPort || "")
+    f.sshKey = String(row.sshKey || "")
+    f.shares = String(row.shares || "")
+  }
+  return f
+}
+
+// {ok, errors: {field: text}, warnings: {field: text}}. An error blocks the
+// submit; a warning is shown and allowed.
+function validateForm(form, rows, templates, hostHome) {
+  var f = form || {}
+  var errors = {}
+  var warnings = {}
+  var kind = f.kind === "permanent" ? "permanent" : "disposable"
+  var name = trim(f.name)
+
+  if (!isDescribe(f.describe)) errors.describe = "At most 500 characters, no line breaks"
+
+  if (!name) errors.name = "A name is required"
+  else if (!isVmName(name, kind)) {
+    errors.name = kind === "permanent"
+      ? "Lower-case letters, digits and -, starting with a letter, at most 32"
+      : "Letters, digits, _ and -, starting with a letter, at most 64"
+  } else if (f.editing !== true && rowByName(rows, kind, name)) errors.name = "A " + kind + " VM called " + name + " already exists"
+
+  if (!isTemplate(trim(f.template), templates)) errors.template = "Pick a template from the list"
+
+  if (kind === "permanent") {
+    if (!isMiB(f.memory)) errors.memory = "Whole MiB between " + MEMORY_MIN + " and " + MEMORY_MAX
+    else if (parseInt(trim(f.memory), 10) > 8192) warnings.memory = "More than 8 GiB is taken from the host while the VM runs"
+    if (!isCores(f.cores)) errors.cores = "Between 1 and " + CORES_MAX
+    if (!isPort(f.sshPort)) errors.sshPort = "Empty (no SSH), or a port from 1024 to 65535"
+    if (trim(f.sshKey) && !isSshKey(f.sshKey)) errors.sshKey = "Pick a key from ~/.ssh, or paste a public key line"
+    if (trim(f.sshPort) && !trim(f.sshKey)) warnings.sshKey = "The guest's dev user has no password: without a key the port reaches a daemon nobody can log into"
+    var shares = parseShares(f.shares, hostHome)
+    if (shares.error) errors.shares = shares.error
+    else {
+      var host = trim(hostHome).replace(/\/+$/, "")
+      for (var i = 0; i < shares.shares.length; i++) {
+        if (host && shares.shares[i].source === host) warnings.shares = "Sharing your whole home directory with the guest"
+      }
+    }
+  }
+
+  var ok = true
+  for (var k in errors) { ok = false; break }
+  return { ok: ok, errors: errors, warnings: warnings }
+}
+
 // ---------------------------------------------------------------- snippet grammar
 //
 // The one line this plugin writes for a permanent VM, and the only Nix it
-// ever emits. parseMachineSnippet reads exactly this and nothing else, so a
-// line changed by hand is recognised as not ours rather than rewritten.
-// Filled in by the form section (plan step 4).
+// ever emits. Every field is written, defaults included, so the line reads
+// back into the form without knowing the module's defaults. Only validated
+// values reach it, and every string in it is drawn from a set with no " \
+// or ${, so it needs no escaping. parseMachineSnippet reads exactly this
+// and nothing else: a line changed by hand is recognised as not ours
+// rather than rewritten.
 
+function nixString(value) {
+  return '"' + value + '"'
+}
+
+// The line's value, or null when validateForm says no.
+function machineSnippet(form, rows, templates, hostHome) {
+  var f = form || {}
+  if (f.kind !== "permanent" || !validateForm(f, rows, templates, hostHome).ok) return null
+  var shares = parseShares(f.shares, hostHome).shares
+  var tags = shareTags(shares)
+  var parts = [
+    "template = " + nixString(trim(f.template)) + ";",
+    "autostart = " + (f.autostart === true ? "true" : "false") + ";",
+    "memory = " + parseInt(trim(f.memory), 10) + ";",
+    "cores = " + parseInt(trim(f.cores), 10) + ";",
+    "sshPort = " + (trim(f.sshPort) ? parseInt(trim(f.sshPort), 10) : "null") + ";"
+  ]
+  var list = []
+  for (var i = 0; i < shares.length; i++) {
+    list.push("{ source = " + nixString(shares[i].source) + "; mountPoint = " + nixString(shares[i].mountPoint) + "; tag = " + nixString(tags[i]) + "; }")
+  }
+  parts.push("shares = [ " + (list.length ? list.join(" ") + " " : "") + "];")
+  var key = normalizeSshKey(f.sshKey)
+  if (key) parts.push("modules = [ { users.users.dev.openssh.authorizedKeys.keys = [ " + nixString(key) + " ]; } ];")
+  return "{ " + parts.join(" ") + " }"
+}
+
+var SNIPPET_RE = new RegExp(
+  '^\\{ template = "([a-z][a-z0-9-]{0,31})"; autostart = (true|false); memory = ([0-9]{1,7}); cores = ([0-9]{1,3}); sshPort = ([0-9]{1,5}|null); ' +
+  'shares = \\[ ((?:\\{ source = "[^"]*"; mountPoint = "[^"]*"; tag = "[^"]*"; \\} )*)\\];' +
+  '(?: modules = \\[ \\{ users\\.users\\.dev\\.openssh\\.authorizedKeys\\.keys = \\[ "([^"]*)" \\]; \\} \\];)? \\}$'
+)
+
+var SHARE_RE = /\{ source = "([^"]*)"; mountPoint = "([^"]*)"; tag = "([^"]*)"; \} /g
+
+// {template, autostart, memory, cores, sshPort (number or null), sshKey,
+// shares (the form's "host:guest …" string)}, or null.
 function parseMachineSnippet(text) {
-  return null
+  var m = trim(text).match(SNIPPET_RE)
+  if (!m) return null
+  if (!isMiB(m[3]) || !isCores(m[4]) || (m[5] !== "null" && !isPort(m[5]))) return null
+  var shares = []
+  var pairs = []
+  SHARE_RE.lastIndex = 0
+  var s
+  while ((s = SHARE_RE.exec(m[6])) !== null) {
+    var guest = normalizeGuestPath(s[2])
+    if (!isPath(s[1]) || s[1].charAt(0) !== "/" || !guest || guest !== s[2] || isReservedGuest(guest)) return null
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(s[3]) || BUILTIN_TAGS.indexOf(s[3]) !== -1) return null
+    shares.push({ source: s[1], mountPoint: guest })
+    pairs.push(s[1] + ":" + guest)
+  }
+  var key = ""
+  if (m[7] !== undefined) {
+    key = normalizeSshKey(m[7])
+    if (key !== m[7]) return null
+  }
+  return {
+    template: m[1],
+    autostart: m[2] === "true",
+    memory: parseInt(m[3], 10),
+    cores: parseInt(m[4], 10),
+    sshPort: m[5] === "null" ? null : parseInt(m[5], 10),
+    sshKey: key,
+    shares: pairs.join(" ")
+  }
+}
+
+// One line for the review screen and the log.
+function formSummary(form) {
+  var f = form || {}
+  return (f.editing ? "edit " : "create ") + trim(f.name) + " (" + (f.kind === "permanent" ? "permanent" : "disposable") + ", " + trim(f.template) + ")"
+}
+
+// ---------------------------------------------------------------- form layout
+//
+// The order the form shows its fields in, and what each one is. `widget`
+// picks the drawing: text, kind (a two-way switch), template (text plus the
+// list), key (text plus the ~/.ssh list), bool. `permanent` marks fields a
+// disposable VM does not have; `create` marks ones an edit hides.
+
+var FORM_FIELDS = [
+  { key: "describe", widget: "text", label: "Describe it, and let the agent fill the rest", hint: "e.g. a python box with 4 GB and my ~/src shared. Enter asks the agent.", create: true, agent: true },
+  { key: "kind", widget: "kind", label: "Kind", hint: "space flips. Disposable: no root, no rebuild. Permanent: boots with the host, one line in apps.nix", create: true },
+  { key: "name", widget: "text", label: "Name", hint: "Required", create: true },
+  { key: "template", widget: "template", label: "Template", hint: "↓ picks from the list" },
+  { key: "autostart", widget: "bool", label: "Start at boot", permanent: true },
+  { key: "memory", widget: "text", label: "Memory (MiB)", hint: "256 to 131072", permanent: true },
+  { key: "cores", widget: "text", label: "Cores", hint: "1 to 64", permanent: true },
+  { key: "sshPort", widget: "text", label: "SSH port on the host", hint: "Empty means console only. 1024 to 65535", permanent: true },
+  { key: "sshKey", widget: "key", label: "SSH public key", hint: "↓ picks one from ~/.ssh; needed to log in over the port", permanent: true },
+  { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true }
+]
+
+// `state` is {agent, aiAssist}: the describe field exists only when the
+// default agent is one this plugin can call, and the setting allows it.
+function visibleFields(form, state) {
+  var f = form || {}
+  var out = []
+  for (var i = 0; i < FORM_FIELDS.length; i++) {
+    var field = FORM_FIELDS[i]
+    if (field.create && f.editing === true) continue
+    if (field.permanent && f.kind !== "permanent") continue
+    if (field.agent && !(state && state.agent && state.aiAssist !== false)) continue
+    out.push(field)
+  }
+  return out
+}
+
+// Where the cursor lands to show the first error: in field order.
+function firstErrorIndex(fields, errors) {
+  for (var i = 0; i < (fields || []).length; i++) {
+    if (errors && errors[fields[i].key]) return i
+  }
+  return -1
+}
+
+function templatesMatching(templates, query) {
+  var q = trim(query).toLowerCase()
+  var out = []
+  for (var i = 0; i < (templates || []).length; i++) {
+    var t = templates[i]
+    if (!q || (t.name + " " + t.label).toLowerCase().indexOf(q) !== -1) out.push(t)
+  }
+  return out
 }
