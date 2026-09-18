@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "nixarchy.microvm",
+  "name": "MicroVMs",
+  "version": "0.1.0",
+  "author": "olafkfreund",
+  "license": "MIT",
+  "description": "NixOS MicroVMs for Omarchy, on the bar and on a key: disposable VMs from nixarchy vm and permanent machines from programs.nixarchy.services.microvm in one list. Start, stop, open the console, create, edit and delete from the keyboard. A permanent VM becomes one line in apps.nix that you review and then apply yourself. Optional AI assist fills the create form from a sentence.",
+  "homepage": "https://github.com/olafkfreund/nixarchy-microvm",
+  "kinds": [
+    "menu",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "menu": "Menu.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "MicroVMs",
+    "description": "Your MicroVMs, running ones first, disposable and permanent side by side. Driven from the keyboard: enter opens the console, s starts or stops, r restarts, l follows the logs, m edits, x deletes, c creates, i describes one to the default agent, a applies queued changes, y copies the name, / filters, u refreshes, o shows the running log, and ? lists the lot inside the panel.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 30,
+      "showStopped": true,
+      "hideWhenEmpty": false,
+      "aiAssist": true
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "description": "How often the bar glyph re-reads the VM lists. The panel refreshes every 3 seconds while it is open, regardless of this.",
+        "min": 5,
+        "max": 600,
+        "step": 5,
+        "defaultValue": 30
+      },
+      {
+        "key": "showStopped",
+        "type": "boolean",
+        "label": "Show stopped VMs",
+        "description": "Off lists only running VMs.",
+        "defaultValue": true
+      },
+      {
+        "key": "hideWhenEmpty",
+        "type": "boolean",
+        "label": "Hide the bar icon when there are no VMs",
+        "description": "On removes the button from the bar until there is a VM to show.",
+        "defaultValue": false
+      },
+      {
+        "key": "aiAssist",
+        "type": "boolean",
+        "label": "AI assist in the create form",
+        "description": "Off hides the describe field and the i key, even when the default agent supports it. The agent only ever proposes form values; it runs nothing.",
+        "defaultValue": true
+      }
+    ]
+  },
+  "keepLoaded": true
+}
