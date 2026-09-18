@@ -93,6 +93,50 @@ d=$(mktemp -d) && git clone -q . "$d/p" && rm -rf "$d/p/.git" && omarchy plugin 
    programs.nixarchy.services.microvm.machines.p1`. Never run `nixarchy-apply` as
    part of a test unless the owner asked for a rebuild.
 
+## Retaking the captures
+
+Real captures only, and never of anything but the plugin, `demo-*` VMs, the
+host's own permanent machine and the wallpaper:
+
+1. **Stage.** Run `docs/capture.sh --setup`. It refuses if any `demo-*` VM
+   already exists, creates `demo-shell` and `demo-python`, and saves
+   `apps.nix`, `services.nix`, `shell.json` and `omarchy-menu.jsonc` under
+   `$XDG_RUNTIME_DIR`. It writes nothing to `apps.nix`: the permanent row in
+   the captures is whatever machine the host declares. Snapshot the two
+   nixarchy files and note do-not-disturb (`omarchy-shell notifications
+   isDnd`) and the workspace on each monitor; turn do-not-disturb on
+   (`setDnd true`).
+2. **Clear the screen.** Put the monitor the popup lands on (the bar that
+   holds the widget) and the focused monitor (where the menu opens) on empty
+   workspaces with `hyprctl dispatch 'hl.dsp.focus({ workspace = "23" })'`;
+   a plain `hyprctl dispatch workspace N` is ignored by the workspace groups.
+   Park the pointer with `hl.dsp.cursor.move`, then *reopen* the surface, or
+   a hover tooltip stays in the shot.
+3. **Drive the surfaces.**
+   - Open them with IPC, and send keys with `wtype`, **only while a plugin
+     layer is up**. Check `hyprctl layers -j` for `omarchy-keyboard-panel` or
+     `nixarchy-microvm-menu` before every key: `wtype` types into whatever
+     has focus. A stray Enter on the list row under the cursor starts that VM
+     in a terminal, which then takes the keys; it happened once here.
+   - `hyprctl layers -j` says which monitor the menu chose.
+   - The owner must not be using the desktop. If a workspace changes under
+     you, stop.
+   - Take stills with `docs/capture.sh --shot NAME X,Y WxH`, cropped to the
+     card; the popup card is 456 px wide, the menu card 1028 px.
+   - Record with `wl-screenrec -g …`. It refuses a region that crosses an
+     output edge by even one pixel.
+   - The SSH key list shows the owner's public keys: clear the field before
+     a still, or crop it out.
+4. **Encode.** WebM (VP9, `-crf 40`) and MP4 (H.264, `-crf 28`). Look at
+   every still, and at a frame sheet of every video
+   (`ffmpeg -vf fps=1,scale=…,tile=…`), before committing.
+5. **Tear down.** Run `docs/capture.sh --teardown` (it stops and removes only
+   the recorded `demo-*` VMs, `demo-new` from the recording included, and
+   restores the four files), restore do-not-disturb and the workspaces, and
+   diff `apps.nix` and `services.nix` against the snapshot. `docs/img/` must
+   stay under 8 MB, and CI enforces it: it ships inside every `omarchy plugin
+   add` clone.
+
 ## Rules
 
 Each rule records a real failure or a hard constraint:

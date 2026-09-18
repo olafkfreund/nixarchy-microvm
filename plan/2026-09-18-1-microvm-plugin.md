@@ -482,6 +482,15 @@ in the same commit.
    `hyprctl binds` plus the Super+K record list show `SUPER ALT + V →
    MicroVMs`.
 
+8. **Step 15: `capture.sh --setup` writes nothing to apps.nix.** The plan
+   had it add a `demo-perm` line through nixarchy-pkg. By capture day the
+   host declared a real permanent machine (`p1`), so the permanent row in the
+   captures is that machine, and the script never touches the two nixarchy
+   files beyond saving and restoring them. Also found while tearing down:
+   `exists()` used `grep -q` under `pipefail`, which can fail the list
+   command and make a VM look absent (`demo-new` survived one teardown);
+   fixed to a full read, and the stray VM removed by hand.
+
 ### Test results
 
 - **Steps 1-6, Node:** `node tests/run.js` → 62 passed, 0 failed (parsing,
@@ -532,6 +541,18 @@ in the same commit.
   failed the check (reverted).
 - **Step 14:** every key in the README's tables is in `Model.SHORTCUTS`; the
   IPC names match `Panel.qml`.
+- **Step 15:** local Jekyll build succeeds; the link check over `_site`
+  finds 38 links, anchors, images and videos, 0 broken; `docs/img` is
+  598 519 bytes of 8 MB (5 stills, `rec-create` 15 s as WebM 171 KB and
+  MP4 169 KB); every still and the recording's frame sheet were looked at:
+  only the plugin, `demo-*` VMs, the host's `p1` row and the wallpaper. The
+  SSH-key list was cleared before the form still so no key blob is shown.
+  After `--teardown`, `apps.nix`, `services.nix`, `shell.json` and the menu
+  extension are byte-identical to the pre-capture snapshots, `p1` is
+  untouched and still `inactive`, and no `demo-*` VM remains. `nix flake
+  check` passes and `nix build` still has 14 files. Do-not-disturb was
+  already on and left on; the two monitors were put on empty workspaces for
+  the captures and restored.
 - **Host afterwards:** t1 and t2 removed, the p1 line removed, the
   `#@ microvm` row re-commented; `apps.nix` and `services.nix` are
   byte-identical to their pre-step-7 backups, `nixarchy-pkg pending` is 0.

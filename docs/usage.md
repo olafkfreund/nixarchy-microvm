@@ -1,3 +1,9 @@
+---
+layout: manual
+title: The manual
+permalink: /usage/
+---
+
 # Using nixarchy.microvm
 
 A walkthrough, from installing the plugin to fixing the usual problems. The

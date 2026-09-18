@@ -27,8 +27,10 @@ in two forms:
 Both share one state, so a job started in one is visible, and locked, in the
 other.
 
+The showcase, with real captures, is at
+[olafkfreund.github.io/nixarchy-microvm](https://olafkfreund.github.io/nixarchy-microvm/).
 The walkthrough, from install to troubleshooting, is
-[`docs/usage.md`](docs/usage.md).
+[`docs/usage.md`](docs/usage.md) (on the site: [the manual](https://olafkfreund.github.io/nixarchy-microvm/usage/)).
 
 ## What it does
 
