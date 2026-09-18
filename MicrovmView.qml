@@ -72,7 +72,15 @@ FocusScope {
   // Deferred, and decided by the mode at the time it runs, so an open that
   // lands straight in the form (IPC create) keeps the form's focus.
   function focusForMode() {
-    keyCatcher.forceActiveFocus()
+    if (root.mode === "log") logView.forceActiveFocus()
+    else keyCatcher.forceActiveFocus()
+  }
+
+  // o: back to whatever the last build printed. Nothing to show until a
+  // detached run has streamed (nixarchy#762).
+  function openLog() {
+    if (MicrovmState.log.length === 0) return
+    setMode("log")
   }
 
   function setMode(next) {
@@ -100,7 +108,7 @@ FocusScope {
     if (verb === "logs") { if (MicrovmState.logs(row)) root.closeRequested(); return }
     if (verb === "copy") { MicrovmState.copyName(row.name); return }
     if (verb === "remove") { askRemove(row); return }
-    if (verb === "start") MicrovmState.start(row)
+    if (verb === "start") { if (MicrovmState.start(row) && row.kind === "disposable") setMode("log") }
     else if (verb === "stop") MicrovmState.stop(row)
     else if (verb === "restart") MicrovmState.restart(row)
   }
@@ -179,6 +187,7 @@ FocusScope {
     if (key === "/") { filterField.forceActiveFocus(); return }
     if (key === "u") { MicrovmState.refresh(); return }
     if (key === "a") { if (root.listActions.apply) apply(); return }
+    if (key === "o") { openLog(); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -287,6 +296,20 @@ FocusScope {
               onClicked: root.apply()
             }
           }
+        }
+
+        LogView {
+          id: logView
+          visible: root.mode === "log"
+          width: parent.width
+          height: visible ? implicitHeight : 0
+          lines: MicrovmState.log
+          title: MicrovmState.streamTitle
+          running: MicrovmState.streaming
+          exitCode: MicrovmState.streamExit
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onBackRequested: root.setMode("list")
         }
 
         TextField {
