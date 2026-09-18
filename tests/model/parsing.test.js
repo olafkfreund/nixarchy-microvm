@@ -94,3 +94,18 @@ test("errorText picks the CLI's own refusal over its progress", () => {
   eq(Model.errorText("\x1b[31msome text\x1b[0m"), "some text")
   eq(Model.errorText(""), "")
 })
+
+test("parseSshKeys lists ~/.ssh/*.pub lines that are keys, by file", () => {
+  const raw = "id_ed25519.pub\tssh-ed25519 AAAAC3Nza me@host\nid_rsa.pub\tssh-rsa AAAAB3Nza\nbroken.pub\tnot a key\nno-tab\n"
+  eq(Model.parseSshKeys(raw), [{ file: "id_ed25519.pub", key: "ssh-ed25519 AAAAC3Nza" }, { file: "id_rsa.pub", key: "ssh-rsa AAAAB3Nza" }])
+  eq(Model.parseSshKeys(""), [])
+  eq(Model.sshKeysArgv("/home/user/")[1], "/home/user/.ssh")
+  eq(Model.sshKeysArgv(""), null)
+})
+
+test("writerError reads nixarchy-pkg's {ok:false,error} and nothing else", () => {
+  eq(Model.writerError('{"ok":false,"error":"p1 is already in apps.nix -- remove it first"}'), "p1 is already in apps.nix -- remove it first")
+  eq(Model.writerError('{"ok":true,"message":"set …"}'), "")
+  eq(Model.writerError("enabled microvm in services.nix (1 queued)\n"), "")
+  eq(Model.writerError(""), "")
+})

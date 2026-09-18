@@ -1344,3 +1344,36 @@ function applyAgentReply(reply, form) {
   }
   return { form: f, reasoning: reasoning, rejected: rejected }
 }
+
+// ---------------------------------------------------------------- host files
+//
+// The SSH keys the form can offer: every ~/.ssh/*.pub, one per line as
+// "<file>\t<key line>", from one find. Only keys normalizeSshKey accepts
+// are listed.
+
+function sshKeysArgv(home) {
+  var h = trim(home).replace(/\/+$/, "")
+  return h ? ["find", h + "/.ssh", "-maxdepth", "1", "-name", "*.pub", "-printf", "%f\\t", "-exec", "cat", "{}", ";"] : null
+}
+
+function parseSshKeys(raw) {
+  var out = []
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var tab = lines[i].indexOf("\t")
+    if (tab === -1) continue
+    var key = normalizeSshKey(lines[i].substring(tab + 1))
+    if (key) out.push({ file: sanitize(lines[i].substring(0, tab), 64), key: key })
+  }
+  return out
+}
+
+// What nixarchy-pkg's writers print: one JSON object whose `ok` says whether
+// the file changed. The error text, or "" when it went through (or when the
+// output is not one of its objects at all, so a plain writer's exit code
+// still decides).
+function writerError(stdout) {
+  var obj = parseObject(trim(stdout))
+  if (!obj || obj.ok !== false) return ""
+  return sanitize(obj.error || obj.message || "refused", 200)
+}
