@@ -1,0 +1,622 @@
+.pragma library
+
+// All of the plugin's logic. No QML in here: this file runs under plain Node
+// in tests/, and the QML side only draws and wires.
+
+var Glyph = {
+  vm: String.fromCodePoint(0xF0B4B),
+  play: String.fromCodePoint(0xF040A),
+  stop: String.fromCodePoint(0xF04DB),
+  restart: String.fromCodePoint(0xF0709),
+  console: String.fromCodePoint(0xF018D),
+  logs: String.fromCodePoint(0xF0219),
+  edit: String.fromCodePoint(0xF03EB),
+  copy: String.fromCodePoint(0xF018F),
+  refresh: String.fromCodePoint(0xF0450),
+  search: String.fromCodePoint(0xF0349),
+  remove: String.fromCodePoint(0xF0A7A),
+  plus: String.fromCodePoint(0xF0415),
+  apply: String.fromCodePoint(0xF0E4B),
+  sparkle: String.fromCodePoint(0xF1B5D),
+  alert: String.fromCodePoint(0xF002A),
+  close: String.fromCodePoint(0xF0156),
+  keyboard: String.fromCodePoint(0xF030C)
+}
+
+var MAX_FIELD = 64
+
+// ---------------------------------------------------------------- keys
+//
+// The one list of what the keyboard does. The `?` sheet renders it and the
+// docs quote it, so the two cannot drift apart. Keys that need a kind or a
+// feature say so; actionsFor decides per row.
+
+var SHORTCUTS = [
+  { group: "Move", keys: "j  k  ↑ ↓", text: "Move the cursor down / up" },
+  { group: "Move", keys: "/", text: "Jump into the filter box" },
+  { group: "Move", keys: "k  ↑", text: "From the first row, step back up into the filter" },
+  { group: "Move", keys: "esc", text: "Leave the filter, then close the panel" },
+
+  { group: "VM", keys: "enter  e", text: "Open the console in a terminal (permanent: SSH, needs a port and a key)" },
+  { group: "VM", keys: "s", text: "Start it or stop it" },
+  { group: "VM", keys: "r", text: "Restart it (permanent)" },
+  { group: "VM", keys: "l", text: "Follow its journal in a terminal (permanent)" },
+  { group: "VM", keys: "m", text: "Edit it: the template, or every field of a permanent VM" },
+  { group: "VM", keys: "x", text: "Delete it (a permanent VM's state directory is kept)" },
+  { group: "VM", keys: "y", text: "Copy its name" },
+
+  { group: "All VMs", keys: "c", text: "Create a new VM" },
+  { group: "All VMs", keys: "i", text: "Describe a VM to the default agent, which fills the form" },
+  { group: "All VMs", keys: "a", text: "Apply queued changes: nixarchy-apply in a terminal" },
+
+  { group: "Panel", keys: "o", text: "Show the build log" },
+  { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "?", text: "Show this list" },
+
+  { group: "Form", keys: "tab  ↓ / shift+tab  ↑", text: "Next / previous field" },
+  { group: "Form", keys: "space", text: "Flip a switch or the kind" },
+  { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
+  { group: "Form", keys: "esc", text: "Cancel" },
+
+  { group: "Log", keys: "j  k", text: "Scroll (stops following)" },
+  { group: "Log", keys: "G  end", text: "Jump to the end and follow" },
+  { group: "Log", keys: "esc", text: "Back to the list; the job keeps running" }
+]
+
+function shortcutGroups() {
+  var order = []
+  var byGroup = {}
+  for (var i = 0; i < SHORTCUTS.length; i++) {
+    var entry = SHORTCUTS[i]
+    if (!byGroup[entry.group]) {
+      byGroup[entry.group] = []
+      order.push(entry.group)
+    }
+    byGroup[entry.group].push({ keys: entry.keys, text: entry.text })
+  }
+  var out = []
+  for (var g = 0; g < order.length; g++) {
+    out.push({ title: order[g], entries: byGroup[order[g]] })
+  }
+  return out
+}
+
+// ---------------------------------------------------------------- text
+
+function sanitize(value, maxLength) {
+  var text = String(value === undefined || value === null ? "" : value)
+  var limit = maxLength > 0 ? maxLength : MAX_FIELD
+  var out = ""
+  for (var i = 0; i < text.length; i++) {
+    var code = text.charCodeAt(i)
+    if (code < 0x20 || code === 0x7F || (code >= 0x80 && code <= 0x9F)) continue
+    out += text.charAt(i)
+  }
+  out = out.replace(/^\s+|\s+$/g, "")
+  if (out.length > limit) out = out.substring(0, limit - 1) + "…"
+  return out
+}
+
+function trim(value) {
+  return String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
+}
+
+function join(parts, separator) {
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] !== undefined && parts[i] !== null && String(parts[i]) !== "") out.push(String(parts[i]))
+  }
+  return out.join(separator === undefined ? " · " : separator)
+}
+
+function plural(count, noun) {
+  return count + " " + noun + (count === 1 ? "" : "s")
+}
+
+// Terminal output from a nix build: colour codes, cursor moves, and progress
+// bars that redraw themselves with \r. Keep what the last redraw left on the
+// line, drop every escape sequence.
+function stripAnsi(line) {
+  var text = String(line === undefined || line === null ? "" : line)
+  var cr = text.lastIndexOf("\r", text.length - 2)
+  if (cr !== -1) text = text.substring(cr + 1)
+  return text
+    .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "")
+    .replace(/\x1b[@-Z\\-_]/g, "")
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "")
+}
+
+var LINE_CAP = 2048
+
+// ponytail: a line longer than 2 KB is a progress bar or a binary blob, not
+// something to read; cut it rather than let one line grow the log unbounded.
+function capLine(line) {
+  var text = String(line === undefined || line === null ? "" : line)
+  return text.length > LINE_CAP ? text.substring(0, LINE_CAP - 1) + "…" : text
+}
+
+// ---------------------------------------------------------------- identifiers
+
+var KINDS = ["disposable", "permanent"]
+
+// What a name may look like when it comes back from the CLI or from systemd:
+// nixarchy-vm accepts [a-zA-Z0-9_-]+, and a unit instance is the same set.
+// This is the rule for acting on an existing VM. Creation is stricter
+// (isVmName, in the form section), so an existing VM is never stranded.
+function isReportedName(value) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(String(value === undefined || value === null ? "" : value))
+}
+
+function isTemplateName(value) {
+  return /^[a-z][a-z0-9-]{0,31}$/.test(String(value === undefined || value === null ? "" : value))
+}
+
+var OPT_PREFIX = "programs.nixarchy.services.microvm.machines."
+
+function optPath(name) {
+  return OPT_PREFIX + name
+}
+
+// ---------------------------------------------------------------- parsing
+
+function parseJsonLines(raw) {
+  var lines = String(raw || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = trim(lines[i])
+    if (line.charAt(0) !== "{") continue
+    try {
+      out.push(JSON.parse(line))
+    } catch (e) {
+    }
+  }
+  return out
+}
+
+// `[` first means the JSON the upstream PR adds; anything else is today's
+// text. The caller learns which it got from `isJsonList`.
+function isJsonList(raw) {
+  return trim(raw).charAt(0) === "["
+}
+
+function parseJsonArray(raw) {
+  try {
+    var parsed = JSON.parse(String(raw || ""))
+    return parsed && typeof parsed.length === "number" ? parsed : []
+  } catch (e) {
+    return []
+  }
+}
+
+// `nixarchy vm list`: with --json, [{name, template, running, dir}]; without,
+//   VMs:
+//     alice            template=shell      stopped
+// or "No VMs yet. …". Either way: [{name, template, running, dir}].
+function parseVmList(raw) {
+  var out = []
+  if (isJsonList(raw)) {
+    var list = parseJsonArray(raw)
+    for (var j = 0; j < list.length; j++) {
+      var item = list[j] || {}
+      if (!isReportedName(item.name)) continue
+      out.push({
+        name: String(item.name),
+        template: isTemplateName(item.template) ? String(item.template) : "?",
+        running: item.running === true,
+        dir: sanitize(item.dir, 4096)
+      })
+    }
+    return out
+  }
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].match(/^\s*(\S+)\s+template=(\S+)\s+(running|stopped)\s*$/)
+    if (!m || !isReportedName(m[1])) continue
+    out.push({ name: m[1], template: isTemplateName(m[2]) ? m[2] : "?", running: m[3] === "running", dir: "" })
+  }
+  return out
+}
+
+// `nixarchy vm templates`: with --json, [{name, label, note}]; without,
+//   Templates:
+//     shell      Shell
+//                  A bare NixOS shell …
+// The note line is the one indented past the name column.
+function parseTemplates(raw) {
+  var out = []
+  if (isJsonList(raw)) {
+    var list = parseJsonArray(raw)
+    for (var j = 0; j < list.length; j++) {
+      var item = list[j] || {}
+      if (!isTemplateName(item.name)) continue
+      out.push({ name: String(item.name), label: sanitize(item.label, 40) || String(item.name), note: sanitize(item.note, 400) })
+    }
+    return out
+  }
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var note = lines[i].match(/^\s{12,}(\S.*)$/)
+    if (note && out.length > 0) {
+      out[out.length - 1].note = join([out[out.length - 1].note, sanitize(note[1], 400)], " ")
+      continue
+    }
+    var m = lines[i].match(/^\s{1,4}(\S+)\s+(\S.*)$/)
+    if (!m || !isTemplateName(m[1])) continue
+    out.push({ name: m[1], label: sanitize(m[2], 40), note: "" })
+  }
+  return out
+}
+
+function templateNames(templates) {
+  var out = []
+  for (var i = 0; i < (templates || []).length; i++) out.push(templates[i].name)
+  return out
+}
+
+// `systemctl list-units 'microvm@*' --all --plain --no-legend --output=json`:
+// [{unit, load, active, sub, description}]. Only the instance name and the
+// two state words matter here.
+function parseUnits(raw) {
+  var out = []
+  var list = parseJsonArray(raw)
+  for (var i = 0; i < list.length; i++) {
+    var unit = String((list[i] || {}).unit || "")
+    var m = unit.match(/^microvm@([^.]+)\.service$/)
+    if (!m || !isReportedName(m[1])) continue
+    out.push({ name: m[1], active: trim(list[i].active).toLowerCase(), sub: trim(list[i].sub).toLowerCase() })
+  }
+  return out
+}
+
+// The lines nixarchy.pkg's `opt set` writes into apps.nix, as nixarchy's own
+// remover finds them: one physical line ending in `#@opt <path>`.
+//
+// A line is ours to edit (managed) only when it is an uncommented
+// assignment whose left-hand path equals the marker's, and whose value
+// reads back under the grammar machineSnippet writes. A marker with
+// anything else on its line is shown but never rewritten
+// (managed-unsupported). A commented-out line declares nothing and is
+// skipped: nixarchy would not build it either.
+function parseMachineLines(text) {
+  var out = []
+  var lines = String(text || "").split("\n")
+  var seen = {}
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    var marker = line.match(/#@opt\s+programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*$/)
+    if (!marker) continue
+    var name = marker[1]
+    if (/^\s*#/.test(line) || seen[name]) continue
+    seen[name] = true
+    var body = line.substring(0, marker.index)
+    var assign = body.match(/^\s*programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*=\s*([\s\S]*?);\s*$/)
+    var fields = assign && assign[1] === name ? parseMachineSnippet(assign[2]) : null
+    out.push({ name: name, ownership: fields ? "managed" : "managed-unsupported", fields: fields, line: trim(line) })
+  }
+  return out
+}
+
+// `nixarchy-pkg pending`: {ok, neverApplied, count, changes: [{marker, …}]}.
+// A machine line's marker is "opt:<path>"; the service row's is ":microvm".
+function parsePending(raw) {
+  var out = { ok: false, neverApplied: false, machines: {}, service: false }
+  var obj = null
+  try { obj = JSON.parse(String(raw || "")) } catch (e) { return out }
+  if (!obj || obj.ok !== true) return out
+  out.ok = true
+  out.neverApplied = obj.neverApplied === true
+  var changes = obj.changes && typeof obj.changes.length === "number" ? obj.changes : []
+  for (var i = 0; i < changes.length; i++) {
+    var marker = String((changes[i] || {}).marker || "")
+    if (marker === ":microvm") out.service = true
+    else if (marker.indexOf("opt:" + OPT_PREFIX) === 0) {
+      var name = marker.substring(("opt:" + OPT_PREFIX).length)
+      if (isReportedName(name)) out.machines[name] = String(changes[i].change || "")
+    }
+  }
+  return out
+}
+
+// ---------------------------------------------------------------- rows
+//
+// One row shape for both kinds. Three axes: what the system reports
+// (runtime), who may edit (ownership), and whether nixarchy.pkg says the
+// line is still to be applied (pending).
+
+function rowKey(kind, name) {
+  return kind + ":" + name
+}
+
+function baseRow(kind, name) {
+  return {
+    key: rowKey(kind, name),
+    kind: kind,
+    name: name,
+    template: "",
+    runtime: "none",
+    ownership: kind === "disposable" ? "state" : "flake",
+    pending: false,
+    sshPort: "",
+    sshKey: "",
+    memory: "",
+    cores: "",
+    autostart: true,
+    shares: "",
+    line: ""
+  }
+}
+
+function disposableRows(vms) {
+  var out = []
+  for (var i = 0; i < (vms || []).length; i++) {
+    var row = baseRow("disposable", vms[i].name)
+    row.template = vms[i].template
+    row.runtime = vms[i].running ? "running" : "stopped"
+    out.push(row)
+  }
+  return out
+}
+
+// Units and apps.nix lines, joined by name. A line with no unit is a machine
+// nixarchy has not built yet (runtime "none"); a unit with no line was
+// declared somewhere this plugin cannot edit (ownership "flake").
+function permanentRows(units, machines, pending) {
+  var byName = {}
+  var order = []
+  var list = machines || []
+  for (var m = 0; m < list.length; m++) {
+    var row = baseRow("permanent", list[m].name)
+    row.ownership = list[m].ownership
+    row.line = list[m].line
+    var f = list[m].fields
+    if (f) {
+      row.template = f.template
+      row.autostart = f.autostart
+      row.memory = String(f.memory)
+      row.cores = String(f.cores)
+      row.sshPort = f.sshPort === null ? "" : String(f.sshPort)
+      row.sshKey = f.sshKey
+      row.shares = f.shares
+    }
+    byName[row.name] = row
+    order.push(row.name)
+  }
+  var us = units || []
+  for (var u = 0; u < us.length; u++) {
+    var name = us[u].name
+    if (!byName[name]) {
+      byName[name] = baseRow("permanent", name)
+      order.push(name)
+    }
+    byName[name].runtime = us[u].active === "active" ? "running" : us[u].active === "failed" ? "failed" : "stopped"
+  }
+  var p = pending && pending.machines ? pending.machines : {}
+  var out = []
+  for (var i = 0; i < order.length; i++) {
+    byName[order[i]].pending = p[order[i]] !== undefined
+    out.push(byName[order[i]])
+  }
+  return out
+}
+
+function compareRows(a, b) {
+  var au = a.runtime === "running", bu = b.runtime === "running"
+  if (au !== bu) return au ? -1 : 1
+  var af = a.runtime === "failed", bf = b.runtime === "failed"
+  if (af !== bf) return af ? -1 : 1
+  if (a.pending !== b.pending) return a.pending ? -1 : 1
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+}
+
+function mergeRows(rows) {
+  return (rows || []).slice().sort(compareRows)
+}
+
+function rowNames(rows) {
+  var out = []
+  for (var i = 0; i < (rows || []).length; i++) out.push(rows[i].name)
+  return out
+}
+
+function rowByKey(rows, key) {
+  for (var i = 0; i < (rows || []).length; i++) {
+    if (rows[i].key === key) return rows[i]
+  }
+  return null
+}
+
+function rowByName(rows, kind, name) {
+  return rowByKey(rows, rowKey(kind, name))
+}
+
+function filterRows(rows, query) {
+  var q = trim(query).toLowerCase()
+  if (!q) return (rows || []).slice()
+  var out = []
+  for (var i = 0; i < (rows || []).length; i++) {
+    var r = rows[i]
+    if ((r.name + " " + r.template + " " + r.kind).toLowerCase().indexOf(q) !== -1) out.push(r)
+  }
+  return out
+}
+
+function statusText(row) {
+  if (!row) return ""
+  if (row.pending) return row.runtime === "none" ? "pending apply" : "changed, pending apply"
+  if (row.runtime === "running") return "running"
+  if (row.runtime === "failed") return "failed"
+  if (row.runtime === "none") return "not built yet"
+  return "stopped"
+}
+
+function subtitleText(row) {
+  var owner = row.ownership === "flake" ? "declared in your flake"
+    : row.ownership === "managed-unsupported" ? "apps.nix, edited by hand" : ""
+  return join([row.kind, row.template, owner])
+}
+
+var ROW_FIELDS = ["name", "kind", "template", "runtime", "ownership", "subtitle", "status",
+  "sshPort", "sshKey", "memory", "cores", "shares", "line", "autostart", "pending", "up", "failing"]
+
+var ROW_BOOLEANS = ["autostart", "pending", "up", "failing"]
+
+// A ListModel takes its role types from the first object it is handed and
+// drops any field it cannot type, so hand it a fresh plain object with every
+// field present and explicitly typed.
+function rowRecord(row) {
+  var out = { key: String(row.key) }
+  for (var i = 0; i < ROW_FIELDS.length; i++) {
+    var field = ROW_FIELDS[i]
+    var value = row[field]
+    out[field] = ROW_BOOLEANS.indexOf(field) !== -1
+      ? value === true
+      : String(value === undefined || value === null ? "" : value)
+  }
+  return out
+}
+
+// What the list draws: every row, sorted, with its derived text.
+function rowsFor(rows) {
+  var out = []
+  var sorted = mergeRows(rows)
+  for (var i = 0; i < sorted.length; i++) {
+    var r = sorted[i]
+    var full = {}
+    for (var k in r) full[k] = r[k]
+    full.subtitle = subtitleText(r)
+    full.status = statusText(r)
+    full.up = r.runtime === "running"
+    full.failing = r.runtime === "failed"
+    out.push(full)
+  }
+  return out
+}
+
+function clampCursor(cursorIndex, total) {
+  if (total <= 0) return 0
+  if (cursorIndex < 0) return 0
+  if (cursorIndex > total - 1) return total - 1
+  return cursorIndex
+}
+
+// The smallest list of ListModel operations that turns currentKeys into the
+// keys of nextRows, so rows the cursor is on are moved rather than rebuilt.
+function reconcilePlan(currentKeys, nextRows) {
+  var keys = (currentKeys || []).slice()
+  var next = nextRows || []
+  var ops = []
+
+  var wanted = {}
+  for (var i = 0; i < next.length; i++) wanted[next[i].key] = true
+
+  for (var r = keys.length - 1; r >= 0; r--) {
+    if (wanted[keys[r]]) continue
+    ops.push({ op: "remove", index: r })
+    keys.splice(r, 1)
+  }
+
+  for (var n = 0; n < next.length; n++) {
+    if (keys[n] === next[n].key) continue
+    var found = keys.indexOf(next[n].key, n)
+    if (found > n) {
+      ops.push({ op: "move", from: found, to: n })
+      keys.splice(n, 0, keys.splice(found, 1)[0])
+    } else {
+      ops.push({ op: "insert", index: n, row: next[n] })
+      keys.splice(n, 0, next[n].key)
+    }
+  }
+  return ops
+}
+
+// ---------------------------------------------------------------- summaries
+
+function counts(rows) {
+  var list = rows || []
+  var out = { total: list.length, running: 0, stopped: 0, failing: 0, pending: 0 }
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].runtime === "running") out.running++
+    else out.stopped++
+    if (list[i].runtime === "failed") out.failing++
+    if (list[i].pending) out.pending++
+  }
+  return out
+}
+
+function summaryText(rows, reachable) {
+  if (!reachable) return "nixarchy-vm not found"
+  var c = counts(rows)
+  if (c.total === 0) return "No VMs"
+  return c.running + " of " + c.total + " running"
+}
+
+function footerText(rows) {
+  var c = counts(rows)
+  return plural(c.total, "VM") + " · " + c.running + " running" + (c.pending > 0 ? " · " + c.pending + " pending" : "")
+}
+
+// The one line shown when there is nothing to list. Says why.
+function emptyText(state) {
+  if (!state.everLoaded) return "Loading…"
+  if (!state.reachable) return "nixarchy-vm is not on PATH"
+  if (state.filtered) return "Nothing matches that filter"
+  if (!state.showStopped) return "No running VMs"
+  return "No VMs yet — press c to create one"
+}
+
+// The CLI's or systemd's own error text, cut to the one line that says
+// something. nixarchy-vm prefixes its refusals with "nixarchy-vm: ".
+function errorText(raw) {
+  var lines = String(raw || "").split("\n")
+  var first = ""
+  var lastError = ""
+  for (var i = 0; i < lines.length; i++) {
+    var line = trim(stripAnsi(lines[i]))
+    if (!line || /^\+ /.test(line)) continue
+    if (!first) first = line
+    if (/^(nixarchy-vm:|nixarchy:|error:|Error:|Failed)/.test(line)) lastError = line
+  }
+  var chosen = lastError || first
+  return chosen ? sanitize(chosen.replace(/^(nixarchy-vm:|nixarchy:|error:|Error:)\s*/i, ""), 160) : ""
+}
+
+// ---------------------------------------------------------------- settings
+
+// The menu entry point is not a bar widget, so it has no setting(). It reads
+// the widget's entry out of the bar layout instead: `bar.layout.<region>[]`,
+// where an entry is either a bare id or {id, ...settings}. Only keys the
+// defaults know about, carrying the same type, get through.
+function settingsFor(barConfig, id, defaults) {
+  var result = {}
+  for (var key in defaults) result[key] = defaults[key]
+  if (!barConfig || typeof barConfig !== "object") return result
+  var layout = barConfig.layout && typeof barConfig.layout === "object" ? barConfig.layout : barConfig
+  var regions = ["left", "center", "right"]
+  for (var r = 0; r < regions.length; r++) {
+    // Not Array.isArray: read through a QObject property, the layout's lists
+    // are Qt sequence wrappers, which have a length but are not JS arrays.
+    var list = layout[regions[r]]
+    var entries = list && typeof list === "object" && typeof list.length === "number" ? list : []
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
+      if (!entry || typeof entry !== "object" || entry.id !== id) continue
+      for (var k in result) {
+        if (k in entry && typeof entry[k] === typeof result[k]) result[k] = entry[k]
+      }
+      return result
+    }
+  }
+  return result
+}
+
+// ---------------------------------------------------------------- snippet grammar
+//
+// The one line this plugin writes for a permanent VM, and the only Nix it
+// ever emits. parseMachineSnippet reads exactly this and nothing else, so a
+// line changed by hand is recognised as not ours rather than rewritten.
+// Filled in by the form section (plan step 4).
+
+function parseMachineSnippet(text) {
+  return null
+}
