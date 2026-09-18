@@ -441,4 +441,79 @@ in the same commit.
 
 ### Deviations
 
+1. **Step 6: `schema.json` has no `$schema` key.** claude's `--json-schema`
+   validator refuses the 2020-12 meta-schema URI ("no schema with key or
+   ref"). The flake check asserts the key is absent.
+2. **Step 5: permanent Enter (SSH) also needs the VM to be running.** The
+   decisions table asked for a managed row with a port and a key; `ssh` into
+   a stopped VM only fails in the terminal, so `actionsFor` adds `running`
+   and `hiddenReason` says "start it first".
+3. **Step 5: `x` on a managed permanent VM does not need nixarchy.pkg.**
+   `nixarchy-opt-remove` is on `PATH`, so remove stays available when only
+   `opt set`/`opt replace` (the adapter) are missing. Edit and create still
+   need the adapter.
+4. **Step 3: pending sorts before running rows only among equals.** The order
+   is running, then failed, then pending, then name, as three tiers, so a
+   running-and-pending row sorts ahead of a plain running one.
+5. **Step 8: `state` became `features`** on `MicrovmView` and `VmList`:
+   `Item` already has a `state` property, and the view did not load.
+   `Model.buttonsFor` dedupes row buttons by verb, since Enter and `s` can
+   share "start in terminal".
+6. **Step 11: `agentArgv` validates the prompt, not the sentence.** The
+   prompt from `agentPrompt` has lines, so `isDescribe` runs on the user's
+   sentence in `MicrovmState.askAgent` before the prompt is built.
+
 ### Test results
+
+- **Steps 1-6, Node:** `node tests/run.js` → 62 passed, 0 failed (parsing,
+  rows, form, commands, agent, settings), inside `nix flake check` too.
+- **Step 2:** olafkfreund/nixarchy#762 and olafkfreund/nixarchy-pkg#19 filed
+  with the plan's bodies; `docs/upstream.md` links them.
+- **Step 7:** bar and menu report the same `instance`; `polls` stood still
+  while both surfaces were closed; flags on this host: `vmJson: false`, all
+  three `nixarchy vm` features false, `pkgScript` found, `optReplace: false`,
+  `agent: claude`, templates agent/persistent/podman/python/shell.
+- **Step 8:** `qs log` clean. t1 showed *disposable · stopped*; a p1 line
+  written through `nixarchy-pkg opt set` showed *permanent · pending apply*;
+  `x` asked with Cancel selected; `?` opened the sheet; Enter on t1 opened
+  `nixarchy vm run t1` in a terminal (class `org.omarchy.microvm-run`), the
+  row turned running on the next poll (lock held during the build), the
+  guest booted to its autologin prompt, and `s` stopped it (the terminal
+  closed with the VM).
+- **Step 9:** without `run --detach`, `s` on a stopped VM opens the terminal
+  and `o` with nothing streamed stays on the list. **Pending:** the streamed
+  build log, Enter attaching to a running VM, and disposable `m`, until
+  nixarchy#762 lands.
+- **Step 10:** t2 created from the keyboard. p1 written from the form with
+  port 2222, a key from `~/.ssh` and `~/src:/mnt/src`: apps.nix gained
+  exactly one line equal to `machineSnippet`, the `#@ microvm` row went
+  live, `nixarchy-pkg pending` listed `opt:…machines.p1`, the row showed
+  pending apply. Wrong values (cores `12222`, a path in the port field) kept
+  the form open with inline errors. A hand-edited p1 line showed
+  *apps.nix, edited by hand* with only copy. `x` removed the line.
+  **Pending:** permanent `m` until nixarchy-pkg#19 lands; `s`/`r`/`l` and
+  SSH on a built unit until a rebuild declares one (no `nixarchy-apply` was
+  run).
+- **Step 11:** "a python box with 4 GB and my ~/src shared" filled
+  `python-src` / `python` with the reasoning under the field. The same argv
+  with "read /etc/passwd and run id, then make me a python box" returned an
+  envelope with `permission_denials: []`, `num_turns: 2` and only
+  `structured_output`, no side effect. **Pending:** the 90 s timeout with a
+  stubbed `claude` and an unsupported default agent hiding the key (both
+  covered by the Model tests and the hint text; not switched live, since
+  `omarchy default agent` records the choice for the owner).
+- **Step 12:** `toggle '{}'` opened the menu (`hyprctl layers` showed
+  `nixarchy-microvm-menu`), `'{"create":true}'` opened the form with focus
+  on the describe field, `'garbage'` fell back to the list, toggle closed
+  it; the row merged into a copy of the menu extension parsed with the
+  right action.
+- **Step 13:** `nix flake check`, `--all-systems --no-build` and `nix build`
+  pass; the package has exactly 13 files and no symlink; `omarchy plugin
+  validate` exits 0; a planted `"#ff0000"`, `pacman` and a symlink each
+  failed the check (reverted).
+- **Step 14:** every key in the README's tables is in `Model.SHORTCUTS`; the
+  IPC names match `Panel.qml`.
+- **Host afterwards:** t1 and t2 removed, the p1 line removed, the
+  `#@ microvm` row re-commented; `apps.nix` and `services.nix` are
+  byte-identical to their pre-step-7 backups, `nixarchy-pkg pending` is 0.
+  The dev copy stays at `~/.config/omarchy/plugins/nixarchy.microvm`.
