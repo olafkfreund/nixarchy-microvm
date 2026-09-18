@@ -1204,3 +1204,143 @@ function removeMessage(row, stateDir) {
   return "Remove " + row.name + " from ~/.config/nixarchy/apps.nix? The unit and /var/lib/microvms/" + row.name +
     " stay until you apply; this plugin never deletes VM state."
 }
+
+// ---------------------------------------------------------------- agent
+//
+// AI assist is one non-interactive call that returns a JSON object shaped
+// by schema.json. The reply is data for the form: converted per field with
+// the field's own type, validated as if typed, shown, and confirmed by the
+// user. Nothing in it is executed. Only claude is called, because it is the
+// one default agent with both a schema flag and a no-tools mode.
+
+var AGENTS = ["claude"]
+
+function agentFor(id) {
+  var name = trim(id)
+  return AGENTS.indexOf(name) !== -1 ? name : ""
+}
+
+// --restricted drops every code-running tool and ignores user settings;
+// --strict-mcp-config keeps MCP servers out too; --tools "" leaves nothing.
+function agentArgv(id, schemaText, prompt) {
+  if (agentFor(id) !== "claude" || !trim(schemaText) || !isDescribe(prompt) || !trim(prompt)) return null
+  return [
+    "claude", "-p",
+    "--output-format", "json",
+    "--json-schema", String(schemaText),
+    "--restricted", "--strict-mcp-config", "--tools", "",
+    "--no-session-persistence",
+    String(prompt)
+  ]
+}
+
+// The prompt: the two kinds, the templates with their notes, the field
+// ranges, and the request as data between tags. The request is one argv
+// element and never touches a shell; the tags only tell the model where
+// the user's words start and stop.
+function agentPrompt(text, templates) {
+  var lines = [
+    "You fill in a form that creates a NixOS MicroVM on this desktop. Answer with one JSON object matching the schema you were given, and nothing else.",
+    "",
+    "Two kinds of VM:",
+    "- disposable: created and destroyed freely, no root, no rebuild, runs only while attached. Choose this unless the request asks for something below.",
+    "- permanent: boots with the host under systemd, can forward an SSH port, has fixed memory and cores. Choose this when the request mentions boot, autostart, SSH, a port, or keeping the machine.",
+    "",
+    "Templates (use the name, not the label):"
+  ]
+  var list = templates || []
+  for (var i = 0; i < list.length; i++) lines.push("- " + list[i].name + " (" + list[i].label + "): " + list[i].note)
+  lines.push(
+    "",
+    "Fields: name is lower-case letters, digits and - (a permanent name) or letters, digits, _ and - (disposable), starting with a letter. memory is whole MiB from 256 to 131072 (1 GB = 1024). cores is 1 to 64. sshPort is null or 1024 to 65535. shares are host directories to mount inside the guest: use only paths the user named, expand ~ to the user's home literally as ~, and mount them under /mnt/<name>; never invent a path. Leave a field out rather than guess it.",
+    "reasoning: one or two short sentences, at most 280 characters, saying why you chose the kind and the template.",
+    "",
+    "<request>",
+    String(text),
+    "</request>"
+  )
+  return lines.join("\n")
+}
+
+function parseObject(text) {
+  try {
+    var v = JSON.parse(String(text))
+    return v && typeof v === "object" && typeof v.length !== "number" ? v : null
+  } catch (e) {
+    return null
+  }
+}
+
+// claude -p --output-format json prints one envelope: {type: "result",
+// structured_output: {…}} with a schema, or {result: "<text>"} without
+// one. Take the object either way; anything else is no answer.
+function parseAgentReply(raw) {
+  var text = trim(raw)
+  var env = parseObject(text)
+  if (!env) {
+    // Prose around JSON: the outermost {…} that parses and looks like a
+    // proposal. Tiny input, so the quadratic scan costs nothing.
+    for (var start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+      for (var e = text.length; e > start; e--) {
+        if (text.charAt(e - 1) !== "}") continue
+        var candidate = parseObject(text.substring(start, e))
+        if (candidate && ("kind" in candidate || "name" in candidate)) return candidate
+      }
+    }
+    return null
+  }
+  if (env.structured_output && typeof env.structured_output === "object") return env.structured_output
+  if (typeof env.result === "string") return parseObject(env.result)
+  if ("kind" in env || "name" in env) return env
+  return null
+}
+
+var AGENT_FIELDS = {
+  kind: "string", name: "string", template: "string",
+  memory: "integer", cores: "integer", sshPort: "port", autostart: "boolean",
+  shares: "shares", reasoning: "string"
+}
+
+// Per-field typed conversion into the form's own strings and bools. A value
+// of the wrong type is dropped, not coerced; unknown keys are dropped. The
+// caller then validates the form exactly as if the user had typed it.
+function applyAgentReply(reply, form) {
+  var f = {}
+  for (var k in (form || {})) f[k] = form[k]
+  var reasoning = ""
+  var rejected = []
+  var r = reply && typeof reply === "object" ? reply : {}
+  for (var key in r) {
+    var type = AGENT_FIELDS[key]
+    var v = r[key]
+    if (!type) continue
+    if (type === "string") {
+      if (typeof v !== "string") { rejected.push(key); continue }
+      if (key === "reasoning") reasoning = sanitize(v, 280)
+      else if (key === "kind") { if (KINDS.indexOf(v) !== -1) f.kind = v; else rejected.push(key) }
+      else f[key] = sanitize(v, key === "name" ? 64 : 32)
+    } else if (type === "integer") {
+      if (typeof v !== "number" || v !== Math.floor(v)) { rejected.push(key); continue }
+      f[key] = String(v)
+    } else if (type === "port") {
+      if (v === null) f.sshPort = ""
+      else if (typeof v === "number" && v === Math.floor(v)) f.sshPort = String(v)
+      else rejected.push(key)
+    } else if (type === "boolean") {
+      if (typeof v !== "boolean") { rejected.push(key); continue }
+      f.autostart = v
+    } else if (type === "shares") {
+      if (!v || typeof v.length !== "number") { rejected.push(key); continue }
+      var pairs = []
+      var bad = false
+      for (var i = 0; i < v.length; i++) {
+        var s = v[i]
+        if (!s || typeof s.source !== "string" || typeof s.mountPoint !== "string") { bad = true; break }
+        pairs.push(sanitize(s.source, 4096) + ":" + sanitize(s.mountPoint, 4096))
+      }
+      if (bad) rejected.push(key)
+      else f.shares = pairs.join(" ")
+    }
+  }
+  return { form: f, reasoning: reasoning, rejected: rejected }
+}

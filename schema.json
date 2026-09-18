@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nixarchy.microvm form proposal",
+  "description": "What the default agent may propose for the create form. Values are proposals: the form validates them as if typed, and the user confirms. Nothing here is executed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "name", "template", "reasoning"],
+  "properties": {
+    "kind": { "type": "string", "enum": ["disposable", "permanent"] },
+    "name": { "type": "string", "maxLength": 64 },
+    "template": { "type": "string", "maxLength": 32 },
+    "memory": { "type": "integer", "minimum": 256, "maximum": 131072 },
+    "cores": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "sshPort": { "type": ["integer", "null"], "minimum": 1024, "maximum": 65535 },
+    "autostart": { "type": "boolean" },
+    "shares": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "mountPoint"],
+        "properties": {
+          "source": { "type": "string", "maxLength": 4096 },
+          "mountPoint": { "type": "string", "maxLength": 4096 }
+        }
+      }
+    },
+    "reasoning": { "type": "string", "maxLength": 280 }
+  }
+}
