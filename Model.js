@@ -959,3 +959,248 @@ function templatesMatching(templates, query) {
   }
   return out
 }
+
+// ---------------------------------------------------------------- features
+//
+// Nothing about the tools is assumed. `nixarchy vm help` says which of the
+// upstream subcommands exist (nixarchy#762), and nixarchy-pkg answers
+// `opt replace` with a usage line once it has it (nixarchy-pkg#19). JSON
+// listing is detected from the output itself (isJsonList).
+
+function detectFeatures(helpText) {
+  var text = String(helpText || "")
+  return {
+    vmDetach: /\brun\b[^\n]*--detach/.test(text),
+    vmConsole: /\bvm console\b/.test(text),
+    vmSetTemplate: /\bset-template\b/.test(text)
+  }
+}
+
+// Today: {"ok":false,"error":"opt takes describe, set or remove, not
+// 'replace'"}. With the feature: a usage line naming `opt replace`.
+function optReplaceSupported(reply) {
+  return /usage:\s*nixarchy-pkg opt replace/i.test(String(reply || ""))
+}
+
+// nixarchy.pkg's adapter sits inside that plugin, not on PATH.
+function pkgScriptPath(configHome) {
+  var base = trim(configHome).replace(/\/+$/, "")
+  return base ? base + "/omarchy/plugins/nixarchy.pkg/bin/nixarchy-pkg" : ""
+}
+
+// ---------------------------------------------------------------- commands
+//
+// Argv arrays only. Each returns null when an input would not be safe in its
+// slot, and the caller does nothing. Names of existing VMs pass
+// isReportedName; a new name passes the stricter isVmName for its kind.
+
+function listArgv() { return ["nixarchy-vm", "list", "--json"] }
+function templatesArgv() { return ["nixarchy-vm", "templates", "--json"] }
+function helpArgv() { return ["nixarchy-vm", "help"] }
+function unitsArgv() { return ["systemctl", "list-units", "microvm@*", "--all", "--plain", "--no-legend", "--output=json"] }
+function defaultAgentArgv() { return ["omarchy-default-agent"] }
+function serviceEnableArgv() { return ["nixarchy-service-enable", "microvm"] }
+function applyTerminalArgv() { return ["omarchy-launch-floating-terminal-with-presentation", "nixarchy-apply"] }
+
+function pendingArgv(pkg) { return pkg ? [pkg, "pending"] : null }
+function optProbeArgv(pkg) { return pkg ? [pkg, "opt", "replace"] : null }
+
+function tui(appId, argv) {
+  return ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-" + appId].concat(argv)
+}
+
+// A running disposable VM's console, in a terminal (needs vmConsole).
+function consoleArgv(name) {
+  return isReportedName(name) ? tui("console", ["nixarchy-vm", "console", name]) : null
+}
+
+// "Start in terminal": today's `run`, which builds and boots in that
+// terminal and holds the VM for as long as the terminal does.
+function runTerminalArgv(name) {
+  return isReportedName(name) ? tui("run", ["nixarchy-vm", "run", name]) : null
+}
+
+function runDetachArgv(name) {
+  return isReportedName(name) ? ["nixarchy-vm", "run", "--detach", name] : null
+}
+
+function stopVmArgv(name) {
+  return isReportedName(name) ? ["nixarchy-vm", "stop", name] : null
+}
+
+function rmVmArgv(name) {
+  return isReportedName(name) ? ["nixarchy-vm", "rm", name] : null
+}
+
+function createVmArgv(name, template, templates) {
+  if (!isVmName(name, "disposable") || !isTemplate(template, templates)) return null
+  return ["nixarchy-vm", "create", name, "--template", template]
+}
+
+function setTemplateArgv(name, template, templates) {
+  if (!isReportedName(name) || !isTemplate(template, templates)) return null
+  return ["nixarchy-vm", "set-template", name, template]
+}
+
+var UNIT_VERBS = ["start", "stop", "restart"]
+
+// systemd asks polkit itself; Omarchy's agent draws the prompt.
+function unitArgv(verb, name) {
+  if (UNIT_VERBS.indexOf(verb) === -1 || !isReportedName(name)) return null
+  return ["systemctl", verb, "microvm@" + name + ".service"]
+}
+
+function logsArgv(name) {
+  return isReportedName(name) ? tui("logs", ["journalctl", "-u", "microvm@" + name, "-n", "200", "-f"]) : null
+}
+
+function sshArgv(port) {
+  return isPort(port) && trim(port) !== "" ? tui("console", ["ssh", "-p", trim(port), "dev@localhost"]) : null
+}
+
+function optSetArgv(pkg, name, snippet) {
+  return pkg && isVmName(name, "permanent") && snippet ? [pkg, "opt", "set", optPath(name), snippet] : null
+}
+
+function optReplaceArgv(pkg, name, snippet) {
+  return pkg && isReportedName(name) && snippet ? [pkg, "opt", "replace", optPath(name), snippet] : null
+}
+
+function optRemoveArgv(name) {
+  return isReportedName(name) ? ["nixarchy-opt-remove", optPath(name)] : null
+}
+
+function copyArgv(name) {
+  return isReportedName(name) ? ["wl-copy", "--trim-newline", name] : null
+}
+
+// The queued commands for a submitted form: one for a disposable VM, two for
+// a new permanent one (the service row, then its line), one for an edit.
+// Null when the form is invalid or the feature it needs is missing.
+function submitArgvs(form, rows, templates, hostHome, state) {
+  var f = form || {}
+  var s = state || {}
+  if (f.kind === "permanent") {
+    var snippet = machineSnippet(f, rows, templates, hostHome)
+    if (!snippet || !s.pkgScript) return null
+    if (f.editing === true) {
+      var replace = optReplaceArgv(s.pkgScript, trim(f.name), snippet)
+      return s.optReplace && replace ? [replace] : null
+    }
+    var set = optSetArgv(s.pkgScript, trim(f.name), snippet)
+    return set ? [serviceEnableArgv(), set] : null
+  }
+  if (!validateForm(f, rows, templates, hostHome).ok) return null
+  if (f.editing === true) {
+    var setT = setTemplateArgv(trim(f.name), trim(f.template), templates)
+    return s.vmSetTemplate && setT ? [setT] : null
+  }
+  var create = createVmArgv(trim(f.name), trim(f.template), templates)
+  return create ? [create] : null
+}
+
+// ---------------------------------------------------------------- row actions
+
+function action(verb, key, glyph, tooltip, danger, enabled) {
+  return { verb: verb, key: key, glyph: glyph, tooltip: tooltip, danger: danger === true, enabled: enabled !== false }
+}
+
+// The one place a key's applicability is decided. `state` is
+// {mutating, vmDetach, vmConsole, vmSetTemplate, pkgScript, optReplace}.
+// A verb that does not apply to the row is absent; one that only waits
+// for the lock is present and disabled. Console, logs and copy never lock.
+function actionsFor(row, state) {
+  if (!row) return []
+  var s = state || {}
+  var free = !s.mutating
+  var out = []
+  var running = row.runtime === "running"
+  if (row.kind === "disposable") {
+    if (running && s.vmConsole) out.push(action("console", "enter", Glyph.console, "Open the console  (enter)", false, true))
+    if (!running && !s.vmConsole) out.push(action("startTerminal", "enter", Glyph.console, "Start in a terminal  (enter)", false, free))
+    if (running) out.push(action("stop", "s", Glyph.stop, "Stop  (s)", true, free))
+    else if (s.vmDetach) out.push(action("start", "s", Glyph.play, "Start, with the build log here  (s)", false, free))
+    else out.push(action("startTerminal", "s", Glyph.play, "Start in a terminal  (s)", false, free))
+    if (!running && s.vmSetTemplate) out.push(action("edit", "m", Glyph.edit, "Change the template  (m)", false, free))
+    out.push(action("remove", "x", Glyph.remove, "Delete, with its state  (x)", true, free))
+  } else {
+    var managed = row.ownership === "managed"
+    if (running && managed && trim(row.sshPort) && trim(row.sshKey)) out.push(action("console", "enter", Glyph.console, "SSH into it  (enter)", false, true))
+    if (row.runtime !== "none") {
+      if (running) {
+        out.push(action("restart", "r", Glyph.restart, "Restart  (r)", false, free))
+        out.push(action("stop", "s", Glyph.stop, "Stop  (s)", true, free))
+      } else {
+        out.push(action("start", "s", Glyph.play, "Start  (s)", false, free))
+      }
+      out.push(action("logs", "l", Glyph.logs, "Follow the journal  (l)", false, true))
+    }
+    if (managed && s.pkgScript && s.optReplace) out.push(action("edit", "m", Glyph.edit, "Edit its line  (m)", false, free))
+    if (managed) out.push(action("remove", "x", Glyph.remove, "Remove its line from apps.nix  (x)", true, free))
+  }
+  out.push(action("copy", "y", Glyph.copy, "Copy the name  (y)", false, true))
+  return out
+}
+
+function actionFor(row, state, verb) {
+  var list = actionsFor(row, state)
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].verb === verb) return list[i]
+  }
+  return null
+}
+
+// The row action a key maps to, or null: a key that means nothing for this
+// row is a no-op, so the footer, the sheet and the keys can never disagree.
+function verbForKey(row, state, key) {
+  var list = actionsFor(row, state)
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].key === key) return list[i].verb
+  }
+  return null
+}
+
+// Keys that belong to the list rather than a row.
+function listActions(state, c) {
+  var s = state || {}
+  var counts = c || {}
+  return {
+    create: true,
+    assist: !!s.agent && s.aiAssist !== false,
+    apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
+  }
+}
+
+// Why a key is not there, for the hint under the list.
+function hiddenReason(row, state, verb) {
+  var s = state || {}
+  if (!row) return ""
+  if (row.kind === "disposable") {
+    if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
+    if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
+    if (verb === "edit") return "changing the template needs nixarchy vm set-template (nixarchy#762)"
+    return ""
+  }
+  if (verb === "console") {
+    if (row.ownership !== "managed") return "console only through SSH, and this VM's line is not managed here"
+    if (!trim(row.sshPort) || !trim(row.sshKey)) return "set an SSH port and key to get a console"
+    if (row.runtime !== "running") return "start it first"
+  }
+  if (verb === "edit" || verb === "remove") {
+    if (row.ownership === "flake") return "declared in your flake; edit it there"
+    if (row.ownership === "managed-unsupported") return "this line was edited by hand; edit it in apps.nix"
+    if (verb === "edit" && !s.pkgScript) return "permanent VMs need the nixarchy.pkg plugin"
+    if (verb === "edit" && !s.optReplace) return "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)"
+  }
+  return ""
+}
+
+function removeMessage(row, stateDir) {
+  if (!row) return ""
+  if (row.kind === "disposable") {
+    var dir = trim(stateDir).replace(/\/+$/, "") + "/" + row.name
+    return "Delete " + row.name + " and everything in " + dir + "? Stop it first if it is running."
+  }
+  return "Remove " + row.name + " from ~/.config/nixarchy/apps.nix? The unit and /var/lib/microvms/" + row.name +
+    " stay until you apply; this plugin never deletes VM state."
+}
