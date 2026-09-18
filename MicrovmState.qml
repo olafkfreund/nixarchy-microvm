@@ -326,8 +326,9 @@ Singleton {
 
   function askAgent(prompt) {
     if (agentProcess.running || !root.agent || !root.schemaText) return false
+    if (!Model.isDescribe(prompt) || !Model.trim(prompt)) { root.agentError = "Describe the VM in one line of at most 500 characters"; return false }
     var argv = Model.agentArgv(root.agent, root.schemaText, Model.agentPrompt(prompt, root.templates))
-    if (!argv) { root.agentError = "Describe the VM in one line of at most 500 characters"; return false }
+    if (!argv) return false
     root.agentError = ""
     root.reasoning = ""
     root.agentForm = null
@@ -372,6 +373,8 @@ Singleton {
       optReplace: root.optReplace,
       agent: root.agentId,
       agentSupported: root.agent !== "",
+      schemaLoaded: root.schemaText !== "",
+      agentError: root.agentError,
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
       lastError: root.lastError

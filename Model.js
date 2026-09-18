@@ -1236,8 +1236,10 @@ function agentFor(id) {
 
 // --restricted drops every code-running tool and ignores user settings;
 // --strict-mcp-config keeps MCP servers out too; --tools "" leaves nothing.
+// `prompt` is the whole text from agentPrompt, several lines; the user's
+// own sentence was checked by the form (isDescribe) before it got here.
 function agentArgv(id, schemaText, prompt) {
-  if (agentFor(id) !== "claude" || !trim(schemaText) || !isDescribe(prompt) || !trim(prompt)) return null
+  if (agentFor(id) !== "claude" || !trim(schemaText) || !trim(prompt) || /\x00/.test(String(prompt))) return null
   return [
     "claude", "-p",
     "--output-format", "json",

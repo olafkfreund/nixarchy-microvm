@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "nixarchy.microvm form proposal",
   "description": "What the default agent may propose for the create form. Values are proposals: the form validates them as if typed, and the user confirms. Nothing here is executed.",
   "type": "object",

@@ -34,6 +34,7 @@ FocusScope {
   signal canceled()
   // Enter on the describe field.
   signal describeRequested(string text)
+  signal cancelAgentRequested()
 
   // ------------------------------------------------------------------ state
 
@@ -179,7 +180,8 @@ FocusScope {
     var shift = (event.modifiers & Qt.ShiftModifier) !== 0
 
     if (key === Qt.Key_Escape) {
-      if (hasList && root.listIndex >= 0) root.listIndex = -1
+      if (root.thinking) root.cancelAgentRequested()
+      else if (hasList && root.listIndex >= 0) root.listIndex = -1
       else root.canceled()
       return true
     }

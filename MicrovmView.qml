@@ -223,6 +223,7 @@ FocusScope {
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
+    if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -345,9 +346,29 @@ FocusScope {
           hostHome: MicrovmState.home
           foreground: root.foreground
           fontFamily: root.fontFamily
+          thinking: MicrovmState.thinking
+          agentError: MicrovmState.agentError
           onSubmitted: function(form) { root.submitForm(form) }
           onReviewRequested: function(form) { root.openReview(form) }
           onCanceled: root.setMode("list")
+          onDescribeRequested: function(text) { MicrovmState.askAgent(text) }
+          onCancelAgentRequested: MicrovmState.cancelAgent()
+
+          // The agent's proposal, once it arrives: converted per field,
+          // dropped into the form, and validated as if typed. The user
+          // still Tabs through it and presses Enter.
+          Connections {
+            target: MicrovmState
+            function onAgentFormChanged() {
+              if (!MicrovmState.agentForm || root.mode !== "form") return
+              var got = Model.applyAgentReply(MicrovmState.agentForm, createForm.form)
+              createForm.setForm(got.form)
+              createForm.reasoning = got.reasoning
+              if (got.rejected.length > 0) MicrovmState.agentError = "ignored (wrong type): " + got.rejected.join(", ")
+              createForm.attempted = true
+              Qt.callLater(createForm.focusCurrent)
+            }
+          }
         }
 
         // The review: what a permanent VM's line will be, and what runs.

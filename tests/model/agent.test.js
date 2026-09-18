@@ -32,8 +32,8 @@ test("agentArgv carries the exact no-tools flags, and the prompt as one element"
   eq(Model.agentArgv("codex", SCHEMA_TEXT, prompt), null)
   eq(Model.agentArgv("claude", "", prompt), null)
   eq(Model.agentArgv("claude", SCHEMA_TEXT, ""), null)
-  eq(Model.agentArgv("claude", SCHEMA_TEXT, "a\nb"), null)
-  eq(Model.agentArgv("claude", SCHEMA_TEXT, "x".repeat(501)), null)
+  ok(Model.agentArgv("claude", SCHEMA_TEXT, "line one\nline two") !== null)   // the prompt itself has lines
+  eq(Model.agentArgv("claude", SCHEMA_TEXT, "a\x00b"), null)
 })
 
 test("agentPrompt names every template once and holds the request once, as data", () => {
