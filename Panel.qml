@@ -46,8 +46,13 @@ Panel {
   }
 
   onOpenedChanged: {
-    if (opened) MicrovmState.acquire("view")
-    else MicrovmState.release("view")
+    if (opened) {
+      MicrovmState.acquire("view")
+      view.reset()
+    } else {
+      MicrovmState.release("view")
+      view.dismiss()
+    }
   }
 
   IpcHandler {
@@ -86,8 +91,6 @@ Panel {
   }
 
   // ----------------------------------------------------------------- panel
-  //
-  // plan step 7: a placeholder until the view lands in step 8.
 
   KeyboardPanel {
     id: panel
@@ -95,19 +98,17 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
-    focusTarget: placeholder
+    focusTarget: view.keyTarget
     contentWidth: panel.fittedContentWidth(Style.space(470))
-    contentHeight: panel.fittedContentHeight(placeholder.implicitHeight)
+    contentHeight: panel.fittedContentHeight(view.implicitHeight)
 
-    Text {
-      id: placeholder
+    MicrovmView {
+      id: view
       anchors.fill: parent
-      text: Model.footerText(MicrovmState.allRows)
-      textFormat: Text.PlainText
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.body
-      Keys.onEscapePressed: root.close()
+      foreground: root.foreground
+      fontFamily: root.fontFamily
+      onCloseRequested: root.close()
+      onSwitchPanelRequested: function(direction) { root.switchPanel(direction) }
     }
   }
 }

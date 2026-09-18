@@ -280,6 +280,8 @@ Singleton {
   //
   // Terminals. None of these is tracked: the terminal owns the process.
 
+  // Said once per session, the first time a VM is started in a terminal.
+  property string notice: ""
   property bool terminalNoticeShown: false
 
   function detach(argv) {
@@ -298,7 +300,7 @@ Singleton {
     if (!allowed(row, "startTerminal")) return false
     if (!root.terminalNoticeShown) {
       root.terminalNoticeShown = true
-      root.lastError = ""
+      root.notice = "started in a terminal: it builds and boots there, and closing that terminal stops the VM"
     }
     return detach(Model.runTerminalArgv(row.name))
   }

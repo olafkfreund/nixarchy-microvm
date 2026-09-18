@@ -143,3 +143,9 @@ test("listActions and removeMessage", () => {
     "Delete alice and everything in /home/user/.local/state/nixarchy/microvm/alice? Stop it first if it is running.")
   ok(Model.removeMessage(row("permanent", "p1"), "").indexOf("/var/lib/microvms/p1 stay until you apply") !== -1)
 })
+
+test("buttonsFor shows one button per verb", () => {
+  const stopped = row("disposable", "alice")
+  eq(Model.buttonsFor(stopped, NONE).map(a => a.verb), ["startTerminal", "remove", "copy"])
+  eq(Model.buttonsFor(row("permanent", "p1"), ALL).map(a => a.verb), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])
+})

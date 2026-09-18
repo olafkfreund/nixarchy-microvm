@@ -1142,6 +1142,20 @@ function actionsFor(row, state) {
   return out
 }
 
+// The row's buttons: one per verb. Enter and s can share a verb (start in
+// terminal), which is one button.
+function buttonsFor(row, state) {
+  var list = actionsFor(row, state)
+  var seen = {}
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    if (seen[list[i].verb]) continue
+    seen[list[i].verb] = true
+    out.push(list[i])
+  }
+  return out
+}
+
 function actionFor(row, state, verb) {
   var list = actionsFor(row, state)
   for (var i = 0; i < list.length; i++) {
