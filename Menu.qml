@@ -8,10 +8,12 @@ import "Model.js" as Model
 
 // MicroVMs on a keybind or a menu row, over whatever you were working in.
 //
+// The same list, form and log as the bar popup (it hosts the same
+// MicrovmView, over the same MicrovmState), but it does not need the widget
+// to be in the bar, and it holds the keyboard for as long as it is up.
+//
 //   omarchy-shell shell toggle nixarchy.microvm '{}'
 //   omarchy-shell shell toggle nixarchy.microvm '{"create":true}'
-//
-// plan step 7: a placeholder card until the view lands in step 8.
 Item {
   id: root
 
@@ -22,6 +24,9 @@ Item {
   property bool opened: false
   property var targetScreen: null
 
+  // A full-screen surface is read from further away than a bar popup, so the
+  // whole view is drawn larger: the same factor nixarchy-pkg's menu uses.
+  // Safe here because nothing in the view pops up (no QQC Popup ignores it).
   readonly property real uiScale: 1.45
   readonly property int viewWidth: Style.space(680)
 
@@ -41,15 +46,30 @@ Item {
     return Model.settingsFor(shell ? shell.barConfig : null, id, defaults)
   }
 
+  function wantsCreate(payloadJson) {
+    try {
+      var payload = JSON.parse(String(payloadJson || "{}"))
+      return !!(payload && payload.create === true)
+    } catch (e) {
+      return false
+    }
+  }
+
+  // Plugin lifecycle: the host calls open(payloadJson) on summon and close()
+  // on hide, and reads `opened` to decide what `toggle` means. keepLoaded, so
+  // every open starts from a clean slate.
   function open(payloadJson) {
     MicrovmState.settings = root.readSettings()
     root.targetScreen = root.focusedScreen()
     if (!root.opened) MicrovmState.acquire("view")
+    view.reset()
+    if (root.wantsCreate(payloadJson)) view.openForm("disposable")
     root.opened = true
   }
 
   function close() {
     if (root.opened) MicrovmState.release("view")
+    view.dismiss()
     root.opened = false
   }
 
@@ -73,11 +93,15 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
+    onVisibleChanged: if (visible) Qt.callLater(function() { view.focusForMode() })
+
     Rectangle {
       anchors.fill: parent
       color: Color.menu.scrim
     }
 
+    // A click away closes, as every summoned surface here does. The card
+    // swallows its own clicks so they never reach this.
     MouseArea {
       anchors.fill: parent
       onClicked: root.close()
@@ -87,7 +111,8 @@ Item {
       id: card
       width: Math.min(Math.round(root.viewWidth * root.uiScale) + card.contentLeftInset + card.contentRightInset,
                       Math.round(panel.width * 0.9))
-      height: Math.round(placeholder.implicitHeight * root.uiScale) + card.contentTopInset + card.contentBottomInset
+      height: Math.min(Math.round(view.implicitHeight * root.uiScale) + card.contentTopInset + card.contentBottomInset,
+                       Math.round(panel.height * 0.85))
       anchors.horizontalCenter: parent.horizontalCenter
       y: Math.max(Style.gapsOut, Math.round((panel.height - height) / 3))
       color: Color.popups.background
@@ -97,17 +122,29 @@ Item {
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
-      Text {
-        id: placeholder
+      Item {
+        id: frame
         anchors.fill: parent
-        anchors.margins: card.contentTopInset
-        text: "MicroVMs · " + Model.footerText(MicrovmState.allRows)
-        textFormat: Text.PlainText
-        color: Color.foreground
-        font.family: Style.font.family
-        font.pixelSize: Style.font.body
-        focus: true
-        Keys.onEscapePressed: root.close()
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+        clip: true
+
+        MicrovmView {
+          id: view
+          // Laid out at its natural size, then drawn uiScale times larger;
+          // input is mapped through the same transform, so clicks still land.
+          width: frame.width / root.uiScale
+          height: frame.height / root.uiScale
+          scale: root.uiScale
+          transformOrigin: Item.TopLeft
+          foreground: Color.foreground
+          fontFamily: Style.font.family
+          onCloseRequested: root.close()
+          // No neighbouring bar panel to hand over to.
+          onSwitchPanelRequested: function(direction) {}
+        }
       }
     }
   }
