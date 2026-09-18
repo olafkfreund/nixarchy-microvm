@@ -106,14 +106,23 @@ vm, sandbox or microvm in the Omarchy menu (Super+Alt+Space) finds it.
 
 ### Give it a key
 
-In `~/.config/hypr/bindings.lua`:
+The plugin ships its key in `microvm-binds.lua`: `SUPER + ALT + V`, free in
+Omarchy's defaults. It has to sit in `~/.config/hypr/`:
+
+- with Nix, the flake's Home Manager module writes it
+  (`imports = [ inputs.nixarchy-microvm.homeManagerModules.default ];`, and
+  `programs.nixarchy-microvm.keybinding` to pick another chord, or `null`);
+- without Nix, copy it from the plugin folder:
+  `cp ~/.config/omarchy/plugins/nixarchy.microvm/microvm-binds.lua ~/.config/hypr/`.
+
+Then add one line to `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + V", "MicroVMs", "omarchy-shell shell toggle nixarchy.microvm '{}'")
+pcall(require, "hypr.microvm-binds")
 ```
 
-`SUPER + ALT + V` is free in Omarchy's defaults. To see what your own
-configuration has on that chord: `hyprctl binds -j | jq '.[] | select(.key=="V")'`.
+Super+K, Omarchy's key bindings menu, then lists it as "MicroVMs". To see what
+your own configuration has on that chord: `hyprctl binds -j | jq '.[] | select(.key=="V")'`.
 
 ### Bar and menu are one thing
 

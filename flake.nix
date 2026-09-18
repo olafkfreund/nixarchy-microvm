@@ -26,6 +26,7 @@
         ./CreateForm.qml
         ./LogView.qml
         ./ShortcutSheet.qml
+        ./microvm-binds.lua
       ];
 
       pluginFor = pkgs:
@@ -47,6 +48,28 @@
           '';
     in
     {
+      # The key bind, the one piece of the plugin that lives outside the plugin
+      # folder. Writes ~/.config/hypr/microvm-binds.lua from the same file the
+      # plugin ships, so the Nix and non-Nix installs bind the same thing.
+      # bindings.lua still has to load it: pcall(require, "hypr.microvm-binds").
+      homeManagerModules.default = { config, lib, ... }:
+        let cfg = config.programs.nixarchy-microvm;
+        in
+        {
+          options.programs.nixarchy-microvm.keybinding = lib.mkOption {
+            # A chord only: the value lands inside a Lua string.
+            type = lib.types.nullOr (lib.types.strMatching "[A-Z0-9_ +]+");
+            default = "SUPER + ALT + V";
+            description = "Chord that opens the MicroVMs menu, in Omarchy's o.bind syntax. Null writes no bind.";
+          };
+
+          config = lib.mkIf (cfg.keybinding != null) {
+            home.file.".config/hypr/microvm-binds.lua".text =
+              builtins.replaceStrings [ "SUPER + ALT + V" ] [ cfg.keybinding ]
+                (builtins.readFile ./microvm-binds.lua);
+          };
+        };
+
       packages = forAll (system:
         let pkgs = nixpkgs.legacyPackages.${system};
         in rec {
@@ -87,6 +110,11 @@
               # agent that never answers. Strict, and without a $schema key,
               # which claude's validator refuses.
               jq -e '.additionalProperties == false and (has("$schema") | not)' ${plugin}/schema.json > /dev/null
+
+              # The Home Manager module swaps the chord by string replacement,
+              # so the shipped file must carry the default one verbatim.
+              grep -qF 'o.bind("SUPER + ALT + V", "MicroVMs",' ${plugin}/microvm-binds.lua \
+                || { echo "microvm-binds.lua lost its default bind" >&2; exit 1; }
 
               # Without this line the bar and the menu each get their own
               # state, and "one mutation at a time" silently stops holding.

@@ -19,7 +19,7 @@ spec: spec/2026-09-18-1-microvm-plugin.md
 - **Runtime files** (the flake's `files` list, copied as real files):
   `manifest.json qmldir LICENSE Model.js schema.json Panel.qml Menu.qml
   MicrovmState.qml MicrovmView.qml VmList.qml CreateForm.qml LogView.qml
-  ShortcutSheet.qml`. `qmldir` is
+  ShortcutSheet.qml microvm-binds.lua`. `qmldir` is
   `singleton MicrovmState 1.0 MicrovmState.qml`. Only `nixpkgs` as input.
 - **Two kinds, one row:**
   `{ kind: disposable|permanent, name, template, runtime, ownership,
@@ -159,9 +159,14 @@ spec: spec/2026-09-18-1-microvm-plugin.md
 - **Menu row and bind.** `share/omarchy-menu.jsonc`: `apps.microvm`, label
   "MicroVMs", aliases `microvm, vm, sandbox, virtual machine, nixarchy vm`,
   action `omarchy-shell shell toggle nixarchy.microvm '{}'`, description
-  ending `· Super+Alt+V`. Bind for `~/.config/hypr/bindings.lua`:
-  `o.bind("SUPER + ALT + V", "MicroVMs", "omarchy-shell shell toggle nixarchy.microvm '{}'")`
-  (free on this host and in Omarchy's defaults).
+  ending `· Super+Alt+V`. The bind ships as `microvm-binds.lua` (a runtime
+  file): `o.bind("SUPER + ALT + V", "MicroVMs", "omarchy-shell shell toggle nixarchy.microvm '{}'")`
+  (free on this host and in Omarchy's defaults). The flake's
+  `homeManagerModules.default` writes it to `~/.config/hypr/microvm-binds.lua`
+  (`programs.nixarchy-microvm.keybinding`, default that chord, `null` = none,
+  chord-only type); without Nix it is copied there. `bindings.lua` loads it
+  with `pcall(require, "hypr.microvm-binds")`; Super+K lists it by its
+  description. See deviation 7.
 - **Checks and CI.** `checks.default`: Node tests, jq on the manifest, entry
   points present, the `qmldir` singleton line, no symlink in package or
   repo, no `pacman`/`yay`, no `"#hex"` in QML, `schema.json` parses,
@@ -344,7 +349,7 @@ in the same commit.
 13. **`flake.nix`, `flake.lock`, `.github/workflows/ci.yml`** —
     `build: flake package, checks and CI (#1)`.
     → Verify: `nix flake check`, `nix flake check --all-systems --no-build`,
-    `nix build` yields exactly the 13 runtime files, no symlinks;
+    `nix build` yields exactly the 14 runtime files, no symlinks;
     `omarchy plugin validate "$(readlink -f result)"`; a planted
     `"#ff0000"`, symlink and `pacman` each fail (reverted, never committed).
 14. **`README.md` and `docs/usage.md`** — `docs: README and user guide
@@ -372,7 +377,7 @@ in the same commit.
     `du -sb docs/img` ≤ 8388608; every still and the recording's frame
     sheet reviewed; after teardown `apps.nix`, `services.nix`, `shell.json`
     and the menu extension are byte-identical to the backups and no
-    `demo-*` VM remains; `nix build` still has 13 files.
+    `demo-*` VM remains; `nix build` still has 14 files.
 16. **Close-out** — `docs(plan): implementation record (#1)`. Fill in the
     record below. Open a PR (`Closes #1`) whose description links
     `intent/2026-09-18-1-microvm-plugin.md`,
@@ -395,7 +400,7 @@ in the same commit.
   | `settings` | distrobox's cases with this id plus `aiAssist` |
 
 - **B. Nix.** `nix flake check`, `nix flake check --all-systems --no-build`,
-  `nix build` (13 files, no symlink), `omarchy plugin validate` on `result`
+  `nix build` (14 files, no symlink), `omarchy plugin validate` on `result`
   and on a fresh clone without `.git`. Expected: all pass; the three planted
   faults each fail.
 - **C. Live checklist**, after `omarchy-restart-shell`,
@@ -462,6 +467,20 @@ in the same commit.
 6. **Step 11: `agentArgv` validates the prompt, not the sentence.** The
    prompt from `agentPrompt` has lines, so `isDescribe` runs on the user's
    sentence in `MicrovmState.askAgent` before the prompt is built.
+
+7. **After step 14, at the owner's request: the bind ships with the plugin.**
+   The plan had the bind as a docs snippet only. The owner asked for it in
+   the flake, in the plugin install and in Omarchy's key bindings menu.
+   `microvm-binds.lua` is now a runtime file (14, not 13), the flake gains
+   `homeManagerModules.default` writing it to `~/.config/hypr/` (same
+   `home.file` + `pcall(require, …)` pattern as ai-mirror and meet-binds;
+   no new input), and the check asserts the shipped default chord. Super+K
+   needs nothing extra: it evaluates `hyprland.lua` with a stub `o.bind`,
+   so any bind reached through `bindings.lua` is listed by its description.
+   Verified: `nix flake check`, `nix build` = 14 files, `omarchy plugin
+   validate` 0, the module's text for a custom chord, and on p620
+   `hyprctl binds` plus the Super+K record list show `SUPER ALT + V →
+   MicroVMs`.
 
 ### Test results
 

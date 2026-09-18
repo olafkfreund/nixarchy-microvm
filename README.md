@@ -144,13 +144,30 @@ omarchy-shell shell toggle nixarchy.microvm '{}'
 omarchy-shell shell toggle nixarchy.microvm '{"create":true}'   # straight into the form
 ```
 
-To bind it in `~/.config/hypr/bindings.lua` (`SUPER + ALT + V` is free in
+The plugin ships its key as `microvm-binds.lua` (`SUPER + ALT + V`, free in
 Omarchy's defaults; `hyprctl binds -j | jq '.[] | select(.key=="V")'` shows
-what yours has):
+what yours has). It belongs in `~/.config/hypr/`:
+
+- **With Nix**, import the flake's Home Manager module; it writes the file.
+  Pick another chord, or `null` for none:
+
+  ```nix
+  imports = [ inputs.nixarchy-microvm.homeManagerModules.default ];
+  programs.nixarchy-microvm.keybinding = "SUPER + ALT + V";   # the default
+  ```
+
+- **Without Nix**, copy it:
+  `cp ~/.config/omarchy/plugins/nixarchy.microvm/microvm-binds.lua ~/.config/hypr/`
+
+Then load it once from `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + V", "MicroVMs", "omarchy-shell shell toggle nixarchy.microvm '{}'")
+pcall(require, "hypr.microvm-binds")
 ```
+
+`pcall` keeps Hyprland's config loading if the file is ever gone. The bind
+carries the description "MicroVMs", so Omarchy's key bindings menu (Super+K)
+lists it.
 
 For an Omarchy menu row, paste [`share/omarchy-menu.jsonc`](share/omarchy-menu.jsonc)
 into `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
