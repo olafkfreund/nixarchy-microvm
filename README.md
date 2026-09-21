@@ -27,7 +27,9 @@ in two forms:
 Both share one state, so a job started in one is visible, and locked, in the
 other.
 
-The showcase, with real captures, is at
+[![The full-screen menu: two running disposable VMs and a permanent VM pending apply, in one list](docs/img/menu.png)](https://olafkfreund.github.io/nixarchy-microvm/)
+
+The showcase, with real captures and recordings, is at
 [olafkfreund.github.io/nixarchy-microvm](https://olafkfreund.github.io/nixarchy-microvm/).
 The walkthrough, from install to troubleshooting, is
 [`docs/usage.md`](docs/usage.md) (on the site: [the manual](https://olafkfreund.github.io/nixarchy-microvm/usage/)).
@@ -80,9 +82,12 @@ feature this host does not have) is simply absent, and the footer says why.
 | `?` | Show this list |
 | `esc` | Leave the filter, then close the panel |
 
-Today, without the upstream `nixarchy vm` changes, Enter and `s` on a stopped
-disposable VM open `nixarchy vm run` in a terminal: it builds and boots there,
-and closing that terminal stops the VM.
+`s` on a stopped disposable VM starts it in the background, with its first
+build streamed into the panel. Enter on a running one opens its console in a
+terminal, and Ctrl-] leaves it running. On a nixarchy from before
+[nixarchy#762](https://github.com/olafkfreund/nixarchy/issues/762), Enter and
+`s` open `nixarchy vm run` in a terminal instead, and closing that terminal
+stops the VM.
 
 ### The form
 
@@ -235,7 +240,8 @@ nix build && omarchy plugin validate "$(readlink -f result)"
 
 The rules for changing anything here are in [`AGENTS.md`](AGENTS.md). The design
 for each change is in `intent/`, `spec/` and `plan/`. The two upstream changes
-that unlock the hidden keys are tracked in [`docs/upstream.md`](docs/upstream.md).
+those keys depend on have both shipped, and are recorded in
+[`docs/upstream.md`](docs/upstream.md).
 
 ## License
 
