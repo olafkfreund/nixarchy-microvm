@@ -57,6 +57,11 @@ spec: spec/2026-09-21-18-teardown-shell-json.md
    PR linking intent, spec and plan, quoting step 1's output, with
    "Closes #18". → Verify that CI is green.
 
+*Corrected during step 1:* check (a) compares `shell.json`'s **ctime**,
+not its inode and mtime as first written. The filesystem reused the freed
+inode at once, and `cp -a` preserves mtime, so both passed on today's
+rewriting script. ctime can't be set, and it moved: red as intended.
+
 ## Tests
 
 Step 1's script (red on today's script, green after step 2) · `nix flake

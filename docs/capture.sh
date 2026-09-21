@@ -13,7 +13,9 @@
 # removes only what that record lists. Nothing here writes to apps.nix: the
 # permanent row in the captures is whatever machine the host already
 # declares, and the four config files are saved before anything is changed
-# and restored on teardown, byte for byte, symlink or not (cp -a).
+# and restored on teardown, byte for byte, symlink or not (cp -a). Only a
+# file that changed is written back: saving shell.json while the shell runs,
+# even unchanged, reloads it and blanks the bar (nixarchy#847, #18).
 #
 # Surfaces are opened with the shell's IPC, and a shot is taken only once the
 # surface's layer is up (hyprctl layers). Key-driven states and the recording
@@ -69,6 +71,16 @@ setup() {
   made vm demo-python
 }
 
+# The saved copy and the live path are the same thing: both links to one
+# target, or equal bytes. A missing live file is never the same.
+same() {
+  if [ -L "$1" ] || [ -L "$2" ]; then
+    [ -L "$1" ] && [ -L "$2" ] && [ "$(readlink -- "$1")" = "$(readlink -- "$2")" ]
+  else
+    [ -e "$2" ] && cmp -s -- "$1" "$2"
+  fi
+}
+
 teardown() {
   [ -f "$state" ] || { echo "nothing recorded; nothing to remove"; return; }
   local kind rest
@@ -84,6 +96,7 @@ teardown() {
   while read -r kind rest; do
     [ "$kind" = saved ] || continue
     local i=${rest%% *} f=${rest#* }
+    same "$run_dir/saved.$i" "$f" && continue
     rm -f -- "$f"
     cp -a "$run_dir/saved.$i" "$f"
   done <"$state"
