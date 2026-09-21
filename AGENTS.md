@@ -70,17 +70,28 @@ d=$(mktemp -d) && git clone -q . "$d/p" && rm -rf "$d/p/.git" && omarchy plugin 
 
 ## Verifying live (on a nixarchy desktop)
 
-1. **Install a copy** (a symlinked checkout does not reload on `rescanPlugins`):
+1. **Install a copy with the shell stopped** (a symlinked checkout does not
+   reload on `rescanPlugins`). Changing a plugin folder, or saving
+   `shell.json`, while the shell runs makes it reload live, and that reload
+   blanks the bar (nixarchy#847). Stop, swap, start:
    ```bash
+   while quickshell kill -p "$OMARCHY_PATH/shell" --any-display >/dev/null 2>&1; do :; done
    rm -rf ~/.config/omarchy/plugins/nixarchy.microvm
    cp -rL result ~/.config/omarchy/plugins/nixarchy.microvm
    chmod -R u+w ~/.config/omarchy/plugins/nixarchy.microvm
+   omarchy-restart-shell    # nothing left to kill, so it only starts the shell
    ```
-   Then enable it once: `omarchy plugin enable nixarchy.microvm`.
-2. **Restart the shell** with `omarchy-restart-shell`, then wait until
-   `omarchy-shell shell ping` answers.
-3. **Check the log for errors.** Get the instance from `qs list --all`, then run
-   `qs log -i <instance>`.
+   The first time, run `omarchy plugin enable nixarchy.microvm` before
+   `omarchy-restart-shell`: it writes `shell.json`. Putting the owner's
+   plugin back (the Home Manager link) goes in the same order.
+2. **Wait for the shell** until `omarchy-shell shell ping` answers.
+3. **Check the log and the bar.** Get the instance from `qs list --all`, then
+   run `qs log -i <instance>`. The bar is healthy when
+   `qs log -i <instance> | grep -c pluginBarApiFor` is 0 and
+   `qs ipc -p "$OMARCHY_PATH/shell" show | grep -cx 'target omarchy.bar'`
+   is 1. A blank bar (only a chevron) means restart the shell before anything
+   else: the ai-mirror control dialog is drawn in the bar, so every control
+   request lapses unseen while it is blank.
 4. **Open each surface:**
    - the menu: `omarchy-shell shell toggle nixarchy.microvm '{}'`, or
      `'{"create":true}'` to open straight into the form;
@@ -114,10 +125,16 @@ host's own permanent machine and the wallpaper:
    a hover tooltip stays in the shot.
 3. **Drive the surfaces.**
    - Open them with IPC, and send keys with `wtype`, **only while a plugin
-     layer is up**. Check `hyprctl layers -j` for `omarchy-keyboard-panel` or
-     `nixarchy-microvm-menu` before every key: `wtype` types into whatever
-     has focus. A stray Enter on the list row under the cursor starts that VM
-     in a terminal, which then takes the keys; it happened once here.
+     layer is up**: `wtype` types into whatever has focus. A stray Enter on
+     the list row under the cursor starts that VM in a terminal, which then
+     takes the keys; it happened once here. Right before sending, check
+     that your ai-mirror grant is held and `hyprctl layers -j` shows
+     `omarchy-keyboard-panel` or `nixarchy-microvm-menu`.
+   - Send the whole take as **one** `wtype` process under `timeout`, with
+     `-s` delays, rather than one call per key. Send `-` as `-k minus`: a
+     lone `-` makes `wtype` read standard input and hang. ai-mirror before
+     its #26 fix refuses to type into a layer-shell panel ("typing must name
+     the window"), so it can grant control but not type here.
    - `hyprctl layers -j` says which monitor the menu chose.
    - The owner must not be using the desktop. If a workspace changes under
      you, stop.
@@ -132,7 +149,9 @@ host's own permanent machine and the wallpaper:
    (`ffmpeg -vf fps=1,scale=…,tile=…`), before committing.
 5. **Tear down.** Run `docs/capture.sh --teardown` (it stops and removes only
    the recorded `demo-*` VMs, `demo-new` from the recording included, and
-   restores the four files), restore do-not-disturb and the workspaces, and
+   restores any of the four files that changed; an untouched `shell.json` is
+   left alone, since writing it blanks the bar), restore do-not-disturb and
+   the workspaces, check the bar (Verifying live, step 3), and
    diff `apps.nix` and `services.nix` against the snapshot. `docs/img/` must
    stay under 8 MB, and CI enforces it: it ships inside every `omarchy plugin
    add` clone.
