@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 9
 spec: spec/2026-09-21-9-sheet-label-overprint.md
 ---
