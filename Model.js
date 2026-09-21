@@ -1246,7 +1246,7 @@ function hiddenReason(row, state, verb) {
   if (row.kind === "disposable") {
     if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
     if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
-    if (verb === "edit") return "changing the template needs nixarchy vm set-template (nixarchy#762)"
+    if (verb === "edit" && !s.vmSetTemplate) return "changing the template needs nixarchy vm set-template (nixarchy#762)"
     return ""
   }
   if (verb === "console") {
