@@ -24,6 +24,12 @@ entries, `tab  ↓` "Next field" and `shift+tab  ↑` "Previous field".
 5. Check and ship: `nix flake check`, the fresh-clone validate, a PR with
    "Closes #9". → Verify that CI is green.
 
+*Live result (razer, 2026-09-21):* pass. The Form group reads "tab ↓ · Next field" and "shift+tab ↑ · Previous field", with no overlap in the 456 px popup or in the menu. The check ran on one test
+build that merged every fix branch, installed as a copy per AGENTS.md, so
+one control grant covered #4–#9. Razer was restored afterwards: its plugin
+link, no demo VMs, do-not-disturb off, and `apps.nix`/`services.nix`
+byte-identical.
+
 ## Tests
 
 `node tests/run.js` · `nix flake check` · the stills in step 4.
