@@ -61,6 +61,10 @@ Singleton {
   // nixarchy.pkg's adapter, or "" when that plugin is not installed.
   property string pkgScript: ""
   property bool optReplace: false
+  // services.nix has the microvm row (null until read), or
+  // nixarchy-service-enable adds a missing one itself (nixarchy#843). #6.
+  property var servicesRow: null
+  property bool serviceHeals: false
   // The default agent this plugin can call ("claude"), or "".
   property string agent: ""
   property string agentId: ""
@@ -77,7 +81,8 @@ Singleton {
     optReplace: root.optReplace,
     agent: root.agent,
     aiAssist: root.aiAssist,
-    serviceQueued: root.pending.service === true
+    serviceQueued: root.pending.service === true,
+    servicesRow: root.serviceHeals ? true : root.servicesRow
   })
 
   function probe() {
@@ -91,6 +96,8 @@ Singleton {
     var keys = Model.sshKeysArgv(root.home)
     if (keys) { keysProcess.command = keys; keysProcess.running = true }
     pkgFile.reload()
+    serviceHelpProbe.command = Model.serviceHelpArgv()
+    serviceHelpProbe.running = true
   }
 
   // ---------------------------------------------------------------- data
@@ -253,7 +260,7 @@ Singleton {
   // A submitted form: create (one or two commands) or edit (one).
   function submit(form) {
     var argvs = Model.submitArgvs(form, root.allRows, root.templates, root.home, root.featureState)
-    if (!argvs) { root.lastError = "Nothing was written: the form or a needed feature is missing"; return false }
+    if (!argvs) { root.lastError = Model.permanentBlocked(form, root.featureState) || "Nothing was written: the form or a needed feature is missing"; return false }
     return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
   }
 
@@ -432,6 +439,15 @@ Singleton {
     onExited: function(code) { root.optReplace = Model.optReplaceSupported(optOut.text) }
   }
 
+  // Today --help is taken as a service id: it only greps and complains, on
+  // stderr, and writes nothing.
+  Process {
+    id: serviceHelpProbe
+    stdout: StdioCollector { id: serviceHelpOut; waitForEnd: true }
+    stderr: StdioCollector { id: serviceHelpErr; waitForEnd: true }
+    onExited: function(code) { root.serviceHeals = Model.serviceEnableHeals(serviceHelpOut.text + "\n" + serviceHelpErr.text) }
+  }
+
   Process {
     id: agentProbe
     stdout: StdioCollector { id: agentOut; waitForEnd: true }
@@ -471,6 +487,17 @@ Singleton {
     printErrors: false
     onLoaded: root.machines = Model.parseMachineLines(text())
     onLoadFailed: root.machines = []
+    onFileChanged: reload()
+  }
+
+  // Watched like apps.nix, so pasting the row clears the warning at once.
+  FileView {
+    id: servicesFile
+    path: root.configHome + "/nixarchy/services.nix"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.servicesRow = Model.servicesHasMicrovm(text())
+    onLoadFailed: root.servicesRow = false
     onFileChanged: reload()
   }
 

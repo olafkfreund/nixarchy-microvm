@@ -57,6 +57,8 @@ FocusScope {
   readonly property var fields: Model.visibleFields(form, features)
   readonly property var current: fieldIndex >= 0 && fieldIndex < fields.length ? fields[fieldIndex] : null
   readonly property var check: Model.validateForm(form, rows, templates, hostHome)
+  // A new permanent VM on a services.nix without the microvm row (#6).
+  readonly property string blocked: Model.permanentBlocked(form, features)
   readonly property var templateChoices: Model.templatesMatching(templates, form.template).slice(0, 6)
   readonly property var keyChoices: keysMatching(form.sshKey).slice(0, 6)
   readonly property string title: form.editing ? "Edit " + form.name : "New VM"
@@ -146,6 +148,11 @@ FocusScope {
     if (!root.check.ok) {
       var at = Model.firstErrorIndex(root.fields, root.check.errors)
       if (at !== -1) root.fieldIndex = at
+      Qt.callLater(root.focusCurrent)
+      return
+    }
+    if (root.blocked) {
+      for (var i = 0; i < root.fields.length; i++) if (root.fields[i].widget === "kind") root.fieldIndex = i
       Qt.callLater(root.focusCurrent)
       return
     }
@@ -362,6 +369,17 @@ FocusScope {
                   elide: Text.ElideRight
                   width: Math.min(implicitWidth, body.width - Style.space(24))
                 }
+              }
+
+              Text {
+                visible: fieldItem.modelData.widget === "kind" && root.blocked !== ""
+                width: parent.width
+                text: root.blocked
+                textFormat: Text.PlainText
+                color: Color.urgent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
               }
 
               // text / template / key: a label over a field.
