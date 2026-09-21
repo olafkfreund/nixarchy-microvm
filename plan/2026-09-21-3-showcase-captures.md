@@ -119,6 +119,14 @@ step and `(#3)`.
    `docs/836-nested-claude-md`) and stop for review. → Verify that the issue
    URL and the draft intent commit exist.
 
+### Correction after merge
+
+The hero `rec-start` as merged in #10 opened on about 1.75 s of the list
+with bug A's false hint (#4), against the decision above. Its frame sheet had
+sampled too sparsely to catch it. The clip is re-cut to start where the log
+opens (1.9 s into the 1× take), both formats, and its first two seconds were
+sheeted at 4 fps.
+
 ## Tests
 
 | Command | Expected |
