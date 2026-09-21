@@ -269,13 +269,14 @@ on a nixarchy from before nixarchy#762, where the terminal running `nixarchy vm
 run` holds the VM. Update nixarchy to get the background start, or leave the
 terminal open.
 
-**"no service 'microvm' in …/services.nix" when writing a permanent VM.**
-Your `~/.config/nixarchy/services.nix` was created before nixarchy had the
-`microvm` row, and nothing rewrites that file once it exists. Copy the line
-ending in `#@ microvm` from `/etc/nixarchy/services-template.nix` into it,
-then create the VM again with `c`. Nothing was written the first time.
-The plugin should warn about this earlier
-([#6](https://github.com/olafkfreund/nixarchy-microvm/issues/6)).
+**"services.nix predates the microvm row" under Kind.** Your
+`~/.config/nixarchy/services.nix` was created before nixarchy had the
+`microvm` row, and nothing rewrites that file once it exists, so a permanent
+VM can't be written yet. Copy the line ending in `#@ microvm` from
+`/etc/nixarchy/services-template.nix` into your `services.nix`. The warning
+clears as soon as you save. Once nixarchy adds a missing row itself
+([nixarchy#843](https://github.com/olafkfreund/nixarchy/issues/843)), the
+plugin detects that and stops warning.
 
 **AI assist stops "asking claude…" and shows nothing.** The call failed, and
 the reason isn't displayed yet
