@@ -192,21 +192,19 @@ FocusScope {
 
   // -------------------------------------------------------------- keyboard
 
+  // Up from the first row lands in the filter, the mirror of the Down key
+  // that walks out of it; the first Down lands on the first row
+  // (Model.stepCursor).
   function moveCursor(delta) {
-    // Up from the first row lands in the filter, the mirror of the Down key
-    // that walks out of it.
-    if (delta < 0 && cursorActive && cursorIndex === 0) {
+    var next = Model.stepCursor(cursorActive, cursorIndex, delta, rows.length)
+    if (next.toFilter) {
       filterField.forceActiveFocus()
       cursorActive = false
       return
     }
-    if (rows.length === 0) {
-      filterField.forceActiveFocus()
-      return
-    }
     cursorActive = true
     cursorFromKeyboard = true
-    cursorIndex = Model.clampCursor(cursorIndex + delta, rows.length)
+    cursorIndex = next.index
   }
 
   function setCursor(index) {

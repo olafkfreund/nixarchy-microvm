@@ -500,6 +500,16 @@ function clampCursor(cursorIndex, total) {
   return cursorIndex
 }
 
+// Where ↓/↑ (delta ±1) or the filter's ↓ (delta 0) put the cursor. With no
+// active cursor, ↓ activates the first row rather than stepping past it
+// (#5), and ↑ leaves for the filter; so does ↑ from the first row.
+function stepCursor(active, index, delta, total) {
+  if (total <= 0) return { active: false, index: 0, toFilter: true }
+  if (delta < 0 && (!active || index === 0)) return { active: false, index: 0, toFilter: true }
+  if (!active && delta > 0) return { active: true, index: 0, toFilter: false }
+  return { active: true, index: clampCursor(index + delta, total), toFilter: false }
+}
+
 // The smallest list of ListModel operations that turns currentKeys into the
 // keys of nextRows, so rows the cursor is on are moved rather than rebuilt.
 function reconcilePlan(currentKeys, nextRows) {
