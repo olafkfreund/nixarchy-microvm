@@ -30,10 +30,16 @@ spec: spec/2026-09-21-3-showcase-captures.md
   older-install path.
 - Bugs A–F become six issues. None is fixed in this task.
 - nixarchy's site gets copies (its convention, from #353), through its own
-  issue and artifacts: `rec-start` as `img/features/microvm.gif` (488 px,
-  about 12 fps, a two-pass palette, 600 KB at most) and `menu.png` as
-  `img/plugins/microvm-panel.jpg` (quality 85), plus alt text. Nothing else
-  changes there.
+  issue and artifacts: `rec-start` becomes `img/features/microvm.gif` and
+  `menu.png` becomes `img/plugins/microvm-panel.jpg`, plus alt text. Nothing
+  else changes there.
+  *Corrected during step 8:* the formats follow nixarchy's
+  `docs/AGENTS.md`, not the 488 px / 12 fps / card-JPEG first written here.
+  Each is a whole desktop at 16:10, with the panel cut at its border and
+  composed onto `docs/screenshots/00-desktop.jpg` where it opens (the popup
+  top-right under the bar, the menu centred). The GIF is made per
+  `tests/demo/encode-gif.sh`: 900 px, 4 fps, 96 colours, under 1 MB. That
+  repo's own artifacts pin the details.
 
 ## Steps
 
@@ -107,8 +113,8 @@ step and `(#3)`.
    records `du -sb docs/img`, and says "Closes #3". → Verify that CI is green
    on the PR.
 8. **nixarchy handover** (no files change in this repo): open an issue in
-   `olafkfreund/nixarchy` naming the two files, their sources, and the
-   frame-sheet requirement. Then, per that repo's AGENTS.md, write its intent
+   `olafkfreund/nixarchy` naming the two files, their sources, the house
+   style they must follow (above), and the frame-sheet requirement. Then, per that repo's AGENTS.md, write its intent
    as a draft on a fresh branch from its `main` (not on
    `docs/836-nested-claude-md`) and stop for review. → Verify that the issue
    URL and the draft intent commit exist.
