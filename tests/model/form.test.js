@@ -154,3 +154,10 @@ test("firstErrorIndex and formSummary", () => {
   eq(Model.formSummary(Model.formFromRow(Model.rowByName(rows, "disposable", "alice"))), "edit alice (disposable, shell)")
   eq(Model.optPath("p1"), "programs.nixarchy.services.microvm.machines.p1")
 })
+
+test("every ? sheet key label fits the key column (#9)", () => {
+  for (const s of Model.SHORTCUTS) ok(s.keys.length <= 12, "too long for the key column: " + s.keys)
+  const form = Model.SHORTCUTS.filter(s => s.group === "Form").map(s => s.keys + " = " + s.text)
+  ok(form.includes("tab  ↓ = Next field"))
+  ok(form.includes("shift+tab  ↑ = Previous field"))
+})

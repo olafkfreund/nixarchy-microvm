@@ -53,7 +53,8 @@ var SHORTCUTS = [
   { group: "Panel", keys: "u", text: "Refresh now" },
   { group: "Panel", keys: "?", text: "Show this list" },
 
-  { group: "Form", keys: "tab  ↓ / shift+tab  ↑", text: "Next / previous field" },
+  { group: "Form", keys: "tab  ↓", text: "Next field" },
+  { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
   { group: "Form", keys: "esc", text: "Cancel" },
