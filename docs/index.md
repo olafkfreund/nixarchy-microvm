@@ -93,6 +93,14 @@ VM is a name and a template. A permanent one adds autostart, memory, cores, an
 SSH port, an SSH key picked from `~/.ssh`, and shares. A mistake is flagged
 under the field before anything is written.
 
+<figure class="shot">
+  <video controls muted loop playsinline preload="none" poster="img/popup.png" aria-label="Recording of creating a disposable VM from the bar popup: a name, a template picked from the list, enter">
+    <source src="img/rec-create.webm" type="video/webm">
+    <source src="img/rec-create.mp4" type="video/mp4">
+  </video>
+  <figcaption>A disposable VM from the keyboard: <kbd>c</kbd>, a name, <kbd>↓</kbd> into the templates and their notes, <kbd>enter</kbd>. It is in the list a moment later.</figcaption>
+</figure>
+
 <div class="shot-pair">
 <figure class="shot">
   <img src="img/form-permanent.png" alt="The create form with the kind set to permanent" loading="lazy">
