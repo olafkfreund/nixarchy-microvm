@@ -82,6 +82,8 @@ FocusScope {
   function openForm(kind) {
     root.mode = "form"
     root.helpOpen = false
+    // The form binds this; clearing it there would break the binding (#7).
+    MicrovmState.agentError = ""
     createForm.start(kind || "disposable")
   }
 
@@ -90,6 +92,8 @@ FocusScope {
   function openEdit(row) {
     root.mode = "form"
     root.helpOpen = false
+    // The form binds this; clearing it there would break the binding (#7).
+    MicrovmState.agentError = ""
     createForm.startEdit(row)
   }
 
