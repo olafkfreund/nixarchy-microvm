@@ -162,3 +162,38 @@ test("buttonsFor shows one button per verb", () => {
   eq(Model.buttonsFor(stopped, NONE).map(a => a.verb), ["startTerminal", "remove", "copy"])
   eq(Model.buttonsFor(row("permanent", "p1"), ALL).map(a => a.verb), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])
 })
+
+// razer's services.nix (2026-09-01): a header, the module, no microvm row.
+const SERVICES_OLD = "# Services and system settings, as NixOS configuration.\n{ ... }:\n{\n    # services.flatpak.enable = true;  #@ flatpak  # For software nixpkgs does not carry.\n}\n"
+const ROW = "    # programs.nixarchy.services.microvm.enable = true;  #@ microvm  # Permanent NixOS sandboxes"
+
+test("servicesHasMicrovm reads the marker nixarchy-service-enable greps for (#6)", () => {
+  eq(Model.servicesHasMicrovm(SERVICES_OLD), false)
+  eq(Model.servicesHasMicrovm(SERVICES_OLD.replace("{\n", "{\n" + ROW + "\n")), true)
+  eq(Model.servicesHasMicrovm(ROW.replace("# programs", "programs")), true)
+  eq(Model.servicesHasMicrovm("#@ microvmx"), false)
+  eq(Model.servicesHasMicrovm(""), false)
+})
+
+test("serviceEnableHeals: today's reply no, the usage nixarchy#843 asks for yes (#6)", () => {
+  eq(Model.serviceEnableHeals("nixarchy: no service '--help' in /home/u/.config/nixarchy/services.nix\n  The full list is /etc/nixarchy/services-template.nix.\n"), false)
+  eq(Model.serviceEnableHeals("usage: nixarchy-service-enable <service-id>\n  A row missing from services.nix is added from /etc/nixarchy/services-template.nix.\n"), true)
+  eq(Model.serviceEnableHeals("usage: nixarchy-service-enable <service-id>\n"), false)
+  eq(Model.serviceHelpArgv(), ["nixarchy-service-enable", "--help"])
+})
+
+test("permanentBlocked: a new permanent VM waits for the services row (#6)", () => {
+  const HOME = "/home/user"
+  const p = Object.assign(Model.emptyForm("permanent"), { name: "p9" })
+  const d = Object.assign(Model.emptyForm("disposable"), { name: "t1", template: "python" })
+  const pe = Object.assign(Model.formFromRow(row("permanent", "p1")), { memory: "2048" })
+  const missing = Object.assign({}, NONE, { servicesRow: false })
+  ok(/services\.nix predates the microvm row/.test(Model.permanentBlocked(p, missing)))
+  ok(/#@ microvm/.test(Model.permanentBlocked(p, missing)))
+  eq(Model.permanentBlocked(p, Object.assign({}, NONE, { servicesRow: true })), "")
+  eq(Model.permanentBlocked(p, NONE), "")              // not known yet: as before
+  eq(Model.permanentBlocked(d, missing), "")
+  eq(Model.permanentBlocked(pe, Object.assign({}, ALL, { servicesRow: false })), "")   // an edit needs no row
+  eq(Model.submitArgvs(p, rows, TEMPLATES, HOME, missing), null)
+  ok(Model.submitArgvs(pe, rows, TEMPLATES, HOME, Object.assign({}, ALL, { servicesRow: false })))
+})

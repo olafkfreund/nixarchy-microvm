@@ -42,6 +42,10 @@ The fixed texts:
    `serviceHelpArgv()` (`["nixarchy-service-enable", "--help"]`) and
    `permanentBlocked`. `submitArgvs` returns null when `permanentBlocked`
    gives a reason. → Verify that the tests pass.
+   *Refined during implementation:* it blocks only when the row is known to
+   be missing (`servicesRow === false`). "Not read yet" behaves as before,
+   so a state without the field (the existing tests, or the moment before
+   the file loads) doesn't block.
 4. **`MicrovmState.qml`**: a watched `FileView` `servicesFile` on
    `configHome + "/nixarchy/services.nix"` (`onLoaded`, `onLoadFailed` and
    `onFileChanged`, as `appsFile` does) sets `servicesRow`. A `Process`
