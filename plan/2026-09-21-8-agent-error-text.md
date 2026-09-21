@@ -46,6 +46,13 @@ envelope is the check.
    "not needed" in this plan in the same commit. → Verify with before and
    after timings in the commit message.
 
+*Step 4 result (razer, 2026-09-21):* the shell held the pipe's write end
+(fd 86, `O_WRONLY|O_NONBLOCK`), so claude waited for stdin. Fixed as
+`launch()` does it: `stdinEnabled` true, start, then false. After the fix the
+shell holds no descriptor on that pipe. Enter to claude's exit: 11.7 s
+before, 5.4 s after (the API time varies, and the descriptor count is the
+evidence).
+
 ## Tests
 
 `node tests/run.js` · step 4's timings.

@@ -334,7 +334,11 @@ Singleton {
     root.agentForm = null
     agentProcess.workingDirectory = root.runtimeDir
     agentProcess.command = argv
+    // Close claude's stdin at once, as launch() does: left open, claude waits
+    // 3 s for input before it starts (#8).
+    agentProcess.stdinEnabled = true
     agentProcess.running = true
+    agentProcess.stdinEnabled = false
     agentTimer.restart()
     return true
   }
