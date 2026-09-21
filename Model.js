@@ -1326,6 +1326,17 @@ function parseAgentReply(raw) {
   return null
 }
 
+// Why an agent call failed, or "" when it did not. claude -p with
+// --output-format json reports its own failures on stdout ({is_error, result},
+// e.g. an expired login, exit 1); stderr then only has its stdin warning.
+function agentFailure(stdout, stderr, code) {
+  var env = parseObject(trim(stdout))
+  if (env && env.is_error === true && typeof env.result === "string" && trim(env.result)) return sanitize(env.result, 160)
+  if (code === 0) return parseAgentReply(stdout) ? "" : "the agent gave no usable answer"
+  var err = String(stderr || "").split("\n").filter(function(l) { return !/no stdin data received/.test(l) }).join("\n")
+  return errorText(err) || "the agent failed (exit " + code + ")"
+}
+
 var AGENT_FIELDS = {
   kind: "string", name: "string", template: "string",
   memory: "integer", cores: "integer", sshPort: "port", autostart: "boolean",

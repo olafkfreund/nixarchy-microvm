@@ -85,3 +85,21 @@ test("fill → validate → snippet equals a typed form; hostile values only rea
   eq(Model.machineSnippet(hostile, rows, TEMPLATES, HOME), null)
   eq(Model.submitArgvs(hostile, rows, TEMPLATES, HOME, { pkgScript: "/x" }), null)
 })
+
+// The envelope claude -p --output-format json printed on razer, 2026-09-21,
+// with an expired login (exit 1). Trimmed to the fields that matter.
+const EXPIRED = JSON.stringify({ type: "result", subtype: "success", is_error: true, api_error_status: null,
+  terminal_reason: "api_error", num_turns: 1, result: "Failed to authenticate: OAuth session expired and could not be refreshed" })
+const STDIN_WARNING = "Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.\n"
+
+test("agentFailure: claude's own message, then stderr, then the exit code (#8)", () => {
+  eq(Model.agentFailure(EXPIRED, STDIN_WARNING, 1), "Failed to authenticate: OAuth session expired and could not be refreshed")
+  eq(Model.agentFailure("", STDIN_WARNING, 1), "the agent failed (exit 1)")
+  eq(Model.agentFailure("", "error: something broke\n", 2), "something broke")
+  eq(Model.agentFailure(envelope(reply), "", 0), "")
+  eq(Model.agentFailure(EXPIRED, "", 0), "Failed to authenticate: OAuth session expired and could not be refreshed")
+  eq(Model.agentFailure("not json at all", "", 0), "the agent gave no usable answer")
+  const long = Model.agentFailure(JSON.stringify({ is_error: true, result: "x".repeat(300) }), "", 1)
+  eq(long.length, 160)
+  eq(Model.agentFailure(JSON.stringify({ is_error: true, result: "bad\u001b[31m\nline" }), "", 1), "bad[31mline")
+})
