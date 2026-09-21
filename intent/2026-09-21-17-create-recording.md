@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 17
 author: olafkfreund
 ---
@@ -44,6 +44,4 @@ plugin, `demo-*` VMs and the wallpaper.
 
 ## Open questions
 
-1. Where does it go on the page? Either under "A form for either kind",
-   before the permanent recording, or as a second hero beside
-   `rec-start`. My lean is the form section, with the hero unchanged.
+None. The owner approved this intent on 2026-09-21 with the stated leans: the clip goes under "A form for either kind", before the permanent recording, and the hero stays unchanged.
