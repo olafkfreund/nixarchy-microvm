@@ -146,13 +146,19 @@ surface is refused. Closing a surface never stops a job.
 3. Tab to **Template**. Press ↓ to move into the list, which shows each
    template's note, and Enter to pick one; `shell` is the default.
 4. Press Enter. The VM is created, and its row says *stopped*.
-5. Press Enter on the row. Today that opens `nixarchy vm run` in a terminal:
-   the first run builds the VM (a minute or two), then boots it to a prompt.
-   **Closing that terminal stops the VM.** Once nixarchy has `nixarchy vm run
-   --detach` and `console` (see below), `s` starts it with the build log in the
-   panel and Enter attaches to it.
-6. `s` on a running VM stops it. `x` deletes it and its state directory, after
-   asking; stop it first.
+5. Press `s` on the row. The VM starts in the background, and its first build
+   (a minute or two, much less once cached) streams into the panel. Esc goes
+   back to the list without stopping anything, and `o` shows the log again.
+   The row gets a filled dot once the VM runs.
+6. Press Enter on the running row. Its console opens in a terminal, at the
+   guest's prompt. Ctrl-] leaves the console, and the VM keeps running.
+7. `s` on a running VM stops it. `m` on a stopped one changes its template.
+   `x` deletes it and its state directory, after asking; stop it first.
+
+On a nixarchy from before
+[nixarchy#762](https://github.com/olafkfreund/nixarchy/issues/762), there is
+no background start: Enter and `s` open `nixarchy vm run` in a terminal, and
+closing that terminal stops the VM.
 
 ### A permanent machine with SSH
 
@@ -186,10 +192,10 @@ rewriting it; it can still be started, stopped and watched.
 ### Edit
 
 `m` on a permanent VM opens the same form with its values filled in; Enter goes
-to the review again and rewrites the line. This needs nixarchy-pkg's
-`opt replace` (see below); until then the key is hidden and the footer says so.
-`m` on a stopped disposable VM changes its template, once `nixarchy vm
-set-template` exists.
+to the review again, which says `opt replace`, and rewrites the line in place.
+`m` on a stopped disposable VM changes its template. On an older install
+without nixarchy-pkg's `opt replace` or `nixarchy vm set-template`, the key is
+hidden and the footer says so.
 
 ### Delete
 
@@ -258,9 +264,25 @@ security.polkit.extraConfig = ''
 '';
 ```
 
-**A VM started from Enter stopped when I closed the terminal.** That is what
-`nixarchy vm run` does today: the terminal holds the VM. Leave it open, or wait
-for `nixarchy vm run --detach` (nixarchy#762).
+**A VM started from Enter stopped when I closed the terminal.** That happens
+on a nixarchy from before nixarchy#762, where the terminal running `nixarchy vm
+run` holds the VM. Update nixarchy to get the background start, or leave the
+terminal open.
+
+**"no service 'microvm' in …/services.nix" when writing a permanent VM.**
+Your `~/.config/nixarchy/services.nix` was created before nixarchy had the
+`microvm` row, and nothing rewrites that file once it exists. Copy the line
+ending in `#@ microvm` from `/etc/nixarchy/services-template.nix` into it,
+then create the VM again with `c`. Nothing was written the first time.
+The plugin should warn about this earlier
+([#6](https://github.com/olafkfreund/nixarchy-microvm/issues/6)).
+
+**AI assist stops "asking claude…" and shows nothing.** The call failed, and
+the reason isn't displayed yet
+([#7](https://github.com/olafkfreund/nixarchy-microvm/issues/7),
+[#8](https://github.com/olafkfreund/nixarchy-microvm/issues/8)). Run
+`claude -p hi` in a terminal. An expired login is the usual cause, and
+logging in again fixes it.
 
 **The first run says it fell back to `main`.** `nixarchy vm` builds the VM
 from the nixarchy commit your system was built from. If that commit is not on
@@ -281,12 +303,14 @@ name is lower-case letters, digits and `-`; shares are `host:guest` pairs.
 
 **Some keys are missing that the docs mention.** Enter on a running disposable
 VM, `s` with a log in the panel, `m` on a disposable VM, and `m` on a
-permanent VM each need an upstream change that this plugin detects at runtime:
+permanent VM each need an upstream change that has shipped, and that this
+plugin detects at runtime. An older install lacks them:
 [`docs/upstream.md`](https://github.com/olafkfreund/nixarchy-microvm/blob/main/docs/upstream.md)
 lists them and what happens without each.
 
-**"Busy: … — wait for it to finish".** Only one change runs at a time, across
-the popup and the menu.
+**"Busy: run demo-python — press o to watch".** Only one change runs at a
+time, across the popup and the menu. The message names the job holding the
+lock. `o` shows its log, and the key works again once the job finishes.
 
 **A running build stopped.** Restarting or reloading the shell ends a stream
 it was running. Start it again.
