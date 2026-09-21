@@ -63,7 +63,11 @@ step and `(#3)`.
    - `rec-permanent` under the form/review pair;
    - `:87` the assist still → `rec-assist`, with `poster="img/assist.png"`
      and a caption quoting the real sentence;
-   - `:97` `menu.png` caption mentions the permanent row and `a apply`.
+   - `:97` `menu.png` caption mentions the permanent row and `a apply`;
+   - (added during implementation) the "It detects what your nixarchy can
+     do" bullet and "A tour" step 2 described the pre-#762 terminal
+     behaviour as current. They now follow the decision: the detached path
+     is normal, and the terminal is the older-install path.
 
    → Verify with `grep -o 'img/[^"]*' docs/index.md | sort -u | while read
    f; do test -f docs/$f || echo MISSING $f; done` printing nothing, and no
