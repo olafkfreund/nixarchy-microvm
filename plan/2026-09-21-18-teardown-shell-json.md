@@ -62,6 +62,12 @@ not its inode and mtime as first written. The filesystem reused the freed
 inode at once, and `cp -a` preserves mtime, so both passed on today's
 rewriting script. ctime can't be set, and it moved: red as intended.
 
+*Step 4 result (razer, 2026-09-21 20:07, owner's grant):* the new step 1
+installed main's build as a copy, and then put the Home Manager link
+(`ra9mx9…`) back the same way. After each: ping ok, `pluginBarApiFor` 0,
+`target omarchy.bar` present, **0** "Local plugin changed" reloads, and a
+full bar in a still.
+
 ## Tests
 
 Step 1's script (red on today's script, green after step 2) · `nix flake
