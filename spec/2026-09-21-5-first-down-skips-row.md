@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 5
 intent: intent/2026-09-21-5-first-down-skips-row.md
 ---
