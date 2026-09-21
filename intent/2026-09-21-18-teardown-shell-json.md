@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 18
 author: olafkfreund
 ---
@@ -51,7 +51,6 @@ desktop. No plugin runtime code.
 
 ## Open questions
 
-1. **Live install:** is it enough to stop the shell, swap the folder, then
-   start the shell, so no live reload happens? Or should the procedure use
-   a separate plugin id for the test copy? My lean is stop, swap, start: it
-   keeps the id and there's no reload window.
+None. The owner approved this on 2026-09-21 with the stated lean: stop the
+shell, swap the plugin folder, then start the shell, so no live reload
+happens and the plugin id stays the same.
