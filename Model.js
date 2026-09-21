@@ -993,6 +993,33 @@ function optReplaceSupported(reply) {
   return /usage:\s*nixarchy-pkg opt replace/i.test(String(reply || ""))
 }
 
+// services.nix is written once and never regenerated, so an older one has no
+// microvm row and nixarchy-service-enable refuses it (#6). This is the marker
+// that script greps for, commented out or not.
+function servicesHasMicrovm(text) {
+  return /#@ microvm(\s|$)/m.test(String(text || ""))
+}
+
+// nixarchy#843: once nixarchy-service-enable adds a missing row itself, its
+// --help says so. Today --help is taken as a service id and only complains.
+function serviceHelpArgv() {
+  return ["nixarchy-service-enable", "--help"]
+}
+
+function serviceEnableHeals(reply) {
+  var text = String(reply || "")
+  return /usage:\s*nixarchy-service-enable/i.test(text) && /missing/i.test(text)
+}
+
+// Why a new permanent VM cannot be written yet, or "". Only when the row is
+// known to be missing; an edit rewrites an existing line and needs no row.
+function permanentBlocked(form, state) {
+  var f = form || {}
+  var s = state || {}
+  if (f.kind !== "permanent" || f.editing === true || s.servicesRow !== false) return ""
+  return "services.nix predates the microvm row: copy the line ending in #@ microvm from /etc/nixarchy/services-template.nix into ~/.config/nixarchy/services.nix"
+}
+
 // nixarchy.pkg's adapter sits inside that plugin, not on PATH.
 function pkgScriptPath(configHome) {
   var base = trim(configHome).replace(/\/+$/, "")
@@ -1107,6 +1134,7 @@ function submitArgvs(form, rows, templates, hostHome, state) {
   var f = form || {}
   var s = state || {}
   if (f.kind === "permanent") {
+    if (permanentBlocked(f, s)) return null
     var snippet = machineSnippet(f, rows, templates, hostHome)
     if (!snippet || !s.pkgScript) return null
     if (f.editing === true) {
