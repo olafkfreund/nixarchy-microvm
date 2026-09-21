@@ -277,12 +277,10 @@ then create the VM again with `c`. Nothing was written the first time.
 The plugin should warn about this earlier
 ([#6](https://github.com/olafkfreund/nixarchy-microvm/issues/6)).
 
-**AI assist stops "asking claude…" and shows nothing.** The call failed, and
-the reason isn't displayed yet
-([#7](https://github.com/olafkfreund/nixarchy-microvm/issues/7),
-[#8](https://github.com/olafkfreund/nixarchy-microvm/issues/8)). Run
-`claude -p hi` in a terminal. An expired login is the usual cause, and
-logging in again fixes it.
+**AI assist shows an error under the field.** The line is claude's own
+message when it gave one, for example "Failed to authenticate: OAuth session
+expired". An expired login is the usual cause: run `claude` in a terminal and
+log in again. `claude -p hi` checks that it answers.
 
 **The first run says it fell back to `main`.** `nixarchy vm` builds the VM
 from the nixarchy commit your system was built from. If that commit is not on
