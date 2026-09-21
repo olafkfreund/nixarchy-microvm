@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 6
 intent: intent/2026-09-21-6-services-row-missing.md
 ---
