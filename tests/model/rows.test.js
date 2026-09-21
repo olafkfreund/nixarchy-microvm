@@ -131,3 +131,11 @@ test("stepCursor: the first ↓ lands on the first row (#5)", () => {
   eq(S(true, 2, -1, 3), { active: true, index: 1, toFilter: false })
   eq(S(true, 1, 0, 3), { active: true, index: 1, toFilter: false })
 })
+
+test("hiddenReason: the m hint names set-template only when it is missing (#4)", () => {
+  const stopped = { kind: "disposable", name: "demo", runtime: "stopped" }
+  const running = { kind: "disposable", name: "demo", runtime: "running" }
+  eq(Model.hiddenReason(stopped, { vmSetTemplate: true }, "edit"), "")
+  eq(Model.hiddenReason(stopped, { vmSetTemplate: false }, "edit"), "changing the template needs nixarchy vm set-template (nixarchy#762)")
+  eq(Model.hiddenReason(running, { vmSetTemplate: true }, "edit"), "stop it first to change the template")
+})
