@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 18
 spec: spec/2026-09-21-18-teardown-shell-json.md
 ---
