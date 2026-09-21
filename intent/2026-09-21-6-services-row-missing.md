@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 6
 author: olafkfreund
 ---
@@ -36,13 +36,7 @@ Possibly nixarchy's `nixarchy-service-enable`, which lives in another repo.
 
 ## Open questions
 
-1. **Where the fix lives.**
-   - **(a) In the plugin:** detect the missing row (read `services.nix` for
-     `#@ microvm`) and show it up front, as a warning on Kind, with the
-     exact line to copy.
-   - **(b) Upstream:** `nixarchy-service-enable` appends a missing row from
-     `/etc/nixarchy/services-template.nix`, so it just works.
-   - **(c) Both:** (a) now, and (b) filed as a nixarchy issue that the
-     plugin detects, the way #762 was.
-
-   My lean is (c).
+None. Settled by the owner on 2026-09-21: **(c)**. The plugin detects a
+missing row and warns up front with the line to copy, and a nixarchy issue
+asks `nixarchy-service-enable` to add a missing row from the template. The
+plugin detects that behaviour once it ships.
