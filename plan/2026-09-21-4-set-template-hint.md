@@ -25,6 +25,12 @@ the console line. `hintText` in the view is unchanged.
    shows no `m:` hint). Then push and open a PR linking intent, spec and
    plan, with "Closes #4". → Verify with a still of the popup and CI green.
 
+*Live result (razer, 2026-09-21):* pass. With the cursor on a stopped disposable VM, no `m:` hint appears above the footer. The check ran on one test
+build that merged every fix branch, installed as a copy per AGENTS.md, so
+one control grant covered #4–#9. Razer was restored afterwards: its plugin
+link, no demo VMs, do-not-disturb off, and `apps.nix`/`services.nix`
+byte-identical.
+
 ## Tests
 
 `node tests/run.js` · `nix flake check` · the live still in step 3.
