@@ -91,6 +91,10 @@ step and `(#3)`.
      `claude -p hi` in a terminal, where an expired login is the usual cause
      (link their issues).
 
+   - (added during implementation) the "Some keys are missing" entry now says
+     the upstream changes have shipped, and the Busy entry quotes the message
+     the run actually showed ("Busy: run demo-python — press o to watch").
+
    → Verify that each changed sentence matches a row of the intent's test
    table.
 6. **`docs/upstream.md`**: mark both rows shipped with their close dates.
