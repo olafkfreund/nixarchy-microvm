@@ -32,6 +32,12 @@ step 2.
    Open one PR linking both issues' artifacts, with "Closes #7, closes #8".
    → Verify that CI is green.
 
+*Live result (razer, 2026-09-21):* pass. Esc while thinking showed "cancelled" in the urgent colour, where before nothing appeared; the next open cleared it, and a real call filled the form. The check ran on one test
+build that merged every fix branch, installed as a copy per AGENTS.md, so
+one control grant covered #4–#9. Razer was restored afterwards: its plugin
+link, no demo VMs, do-not-disturb off, and `apps.nix`/`services.nix`
+byte-identical.
+
 ## Tests
 
 The grep in step 1 · `node tests/run.js` · the still in step 3.
