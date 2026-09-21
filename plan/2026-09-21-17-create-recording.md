@@ -47,6 +47,18 @@ spec: spec/2026-09-21-17-create-recording.md
 5. **After merge:** the live page returns 200 for both `rec-create` files,
    with sizes matching. → Verify with `curl`.
 
+*How step 1 actually ran (razer, 2026-09-21):* ai-mirror 2.0 on razer
+could not type into layer-shell panels (fixed upstream in ai-mirror#26, not
+yet on razer), so after the owner's grant the take was one guarded `wtype`
+process: control held and the popup layer up, checked once, with a 60 s
+timeout. Teardown removed the `demo-*` VMs and restored do-not-disturb, but
+did **not** run `capture.sh --teardown`: its `shell.json` restore blanks the
+bar (#18, nixarchy#847). `apps.nix`/`services.nix` were compared with the
+snapshot (identical), and `shell.json` was untouched. The clip is 12.3 s. A
+4 fps sheet of all 49 frames plus the first and last list frames at full
+size were checked: no `m:` hint, no key, nothing but the plugin and
+`demo-*`.
+
 ## Tests
 
 Frame sheet (step 2) · `nix flake check` · validate · CI · live page.
