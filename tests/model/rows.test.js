@@ -115,3 +115,19 @@ test("every shortcut group renders, in the order first seen", () => {
   eq(groups.map(g => g.title), ["Move", "VM", "All VMs", "Panel", "Form", "Log"])
   ok(groups.every(g => g.entries.length > 0))
 })
+
+test("stepCursor: the first ↓ lands on the first row (#5)", () => {
+  const S = (active, index, delta, total) => Model.stepCursor(active, index, delta, total)
+  eq(S(false, 0, 1, 0), { active: false, index: 0, toFilter: true })   // no rows
+  eq(S(true, 1, -1, 0), { active: false, index: 0, toFilter: true })
+  eq(S(false, 0, 1, 3), { active: true, index: 0, toFilter: false })   // inactive ↓: row 0
+  eq(S(false, 2, 1, 3), { active: true, index: 0, toFilter: false })
+  eq(S(false, 0, -1, 3), { active: false, index: 0, toFilter: true })  // inactive ↑: filter
+  eq(S(false, 2, 0, 3), { active: true, index: 2, toFilter: false })   // filter's ↓ (delta 0), as today
+  eq(S(false, 7, 0, 3), { active: true, index: 2, toFilter: false })
+  eq(S(true, 0, -1, 3), { active: false, index: 0, toFilter: true })   // ↑ from row 0: filter
+  eq(S(true, 0, 1, 3), { active: true, index: 1, toFilter: false })
+  eq(S(true, 2, 1, 3), { active: true, index: 2, toFilter: false })    // clamped at the end
+  eq(S(true, 2, -1, 3), { active: true, index: 1, toFilter: false })
+  eq(S(true, 1, 0, 3), { active: true, index: 1, toFilter: false })
+})
