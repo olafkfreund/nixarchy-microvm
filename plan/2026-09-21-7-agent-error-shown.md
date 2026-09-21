@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 7
 spec: spec/2026-09-21-7-agent-error-shown.md
 ---
