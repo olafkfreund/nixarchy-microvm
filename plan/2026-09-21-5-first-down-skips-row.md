@@ -41,6 +41,12 @@ spells out what that is.)
 5. Check and ship: `nix flake check`, the fresh-clone validate, a PR with
    "Closes #5". → Verify that CI is green.
 
+*Live result (razer, 2026-09-21):* pass. With the pointer off the card, the first ↓ then `y` copied `demo-a` in the popup and in the menu. ↑ from the first row entered the filter; ↓ from the filter landed on `demo-a`, and the next ↓ on `demo-b`. With the pointer resting on a row, hover picks the cursor first, which is intended. The check ran on one test
+build that merged every fix branch, installed as a copy per AGENTS.md, so
+one control grant covered #4–#9. Razer was restored afterwards: its plugin
+link, no demo VMs, do-not-disturb off, and `apps.nix`/`services.nix`
+byte-identical.
+
 ## Tests
 
 `node tests/run.js` · `nix flake check` · the step 4 pastes.
