@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 8
 intent: intent/2026-09-21-8-agent-error-text.md
 ---
@@ -53,6 +53,5 @@ stderr, then to the exit code, so the worst case is a generic message.
 
 ## Open question
 
-A live end-to-end check of the error message needs claude's login to fail
-on razer, which means you log out (`claude /logout`) and back in afterwards.
-Do you want that run, or is the Node test on the captured envelope enough?
+None. The owner approved this spec on 2026-09-21 without asking for the live
+logout run, so the check is the Node test on the envelope captured on razer.
