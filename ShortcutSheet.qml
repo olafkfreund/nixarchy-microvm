@@ -113,6 +113,7 @@ Item {
                   color: Color.accent
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
                 }
 
                 Text {
