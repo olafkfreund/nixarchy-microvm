@@ -77,14 +77,12 @@ FocusScope {
   function start(kind) {
     root.setForm(Model.emptyForm(kind))
     root.reasoning = ""
-    root.agentError = ""
     root.begin()
   }
 
   function startEdit(row) {
     root.setForm(Model.formFromRow(row))
     root.reasoning = ""
-    root.agentError = ""
     root.begin()
   }
 
