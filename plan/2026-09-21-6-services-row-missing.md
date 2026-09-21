@@ -71,6 +71,12 @@ The fixed texts:
 8. **Check and ship**: `node tests/run.js`, `nix flake check`, the
    fresh-clone validate, a PR with "Closes #6". → Verify that CI is green.
 
+*Live result (razer, 2026-09-21):* pass. On razer's own services.nix (no row), flipping to permanent showed the reason under Kind and Enter stayed on the form (nothing written). Pasting the template line cleared the warning live, and Enter then reached the review with the normal "Runs:" line. The file was restored from the snapshot and compared byte for byte. The check ran on one test
+build that merged every fix branch, installed as a copy per AGENTS.md, so
+one control grant covered #4–#9. Razer was restored afterwards: its plugin
+link, no demo VMs, do-not-disturb off, and `apps.nix`/`services.nix`
+byte-identical.
+
 ## Tests
 
 `node tests/run.js` · `nix flake check` · the step 7 stills and `cmp`.
