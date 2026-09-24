@@ -151,9 +151,12 @@ after every step.
 
 ## Tests
 
-**Node — `node tests/run.js`.** 70 cases pass today. This adds 25, counted one
-`test(...)` call per named case below, so a green run reads **95 passed, 0
-failed**. All go in a new `tests/model/failure.test.js` except the `listActions`
+**Node — `node tests/run.js`.** 70 cases pass today. This adds 21, counted one
+`test(...)` call per named case below (4 + 5 + 3 + 3 + 2 + 2 + 2), so a green
+run reads **91 passed, 0 failed**. If the "service queued, machine not written"
+wording stays a QML special case rather than moving into `processFailure` — an
+open question this plan records against step 3 — `Model.processFailure` drops
+to 4 and the total is **90**. All go in a new `tests/model/failure.test.js` except the `listActions`
 pair, which belongs beside the existing action tests in `tests/model/rows.test.js`.
 
 - `Model.commandName` — 4: a plain name (`["systemctl","start",…]` →
