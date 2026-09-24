@@ -133,3 +133,23 @@ test("a line an earlier version wrote reads back as managed (#22)", () => {
   eq(at(line("d", "ro-store"), "d").ownership, "managed-unsupported")
   eq(at(line("e", 'a\\"b'), "e").ownership, "managed-unsupported")
 })
+
+test("names from Object.prototype are rows, not prototype members (#22)", () => {
+  const P = "programs.nixarchy.services.microvm.machines."
+  const NAMES = ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]
+  const nix = NAMES.map(n => "  " + P + n + " = { template = \"shell\"; };  #@opt " + P + n).join("\n")
+
+  // Before Object.create(null), seen["constructor"] was truthy on a fresh {} and
+  // the line the plugin had just written became invisible: a declared machine
+  // the UI denied existed, unreachable for edit or delete.
+  eq(Model.parseMachineLines(nix).map(m => m.name), NAMES)
+
+  const units = NAMES.map(n => ({ name: n, active: "active" }))
+  eq(Model.permanentRows(units, [], null).map(r => r.name), NAMES)
+
+  // And byName[name].runtime = … no longer assigns onto the Object constructor,
+  // which in a .pragma library singleton would outlive the call.
+  eq(Object.prototype.runtime, undefined)
+  eq(Object.prototype.pending, undefined)
+  eq(({}).constructor.runtime, undefined)
+})

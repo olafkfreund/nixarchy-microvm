@@ -282,7 +282,7 @@ function parseUnits(raw) {
 function parseMachineLines(text) {
   var out = []
   var lines = String(text || "").split("\n")
-  var seen = {}
+  var seen = Object.create(null)
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i]
     var marker = line.match(/#@opt\s+programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*$/)
@@ -363,7 +363,7 @@ function disposableRows(vms) {
 // nixarchy has not built yet (runtime "none"); a unit with no line was
 // declared somewhere this plugin cannot edit (ownership "flake").
 function permanentRows(units, machines, pending) {
-  var byName = {}
+  var byName = Object.create(null)
   var order = []
   var list = machines || []
   for (var m = 0; m < list.length; m++) {
@@ -1446,6 +1446,7 @@ function applyAgentReply(reply, form) {
   var rejected = []
   var r = reply && typeof reply === "object" ? reply : {}
   for (var key in r) {
+    if (!Object.prototype.hasOwnProperty.call(AGENT_FIELDS, key)) continue
     var type = AGENT_FIELDS[key]
     var v = r[key]
     if (!type) continue
