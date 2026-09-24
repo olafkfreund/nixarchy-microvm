@@ -19,7 +19,23 @@ FocusScope {
   // would restore whichever child held focus last, stale filter field included.
   readonly property alias keyTarget: keyCatcher
 
-  implicitHeight: column.implicitHeight
+  // The binding graph, one way only. Left of the arrow is natural height, which
+  // names content implicitHeights and Style tokens; right is assigned height,
+  // which names root.height and its descendants. No identifier is in both, so
+  // there is no back edge:
+  //   header/footer/bodyNatural -> implicitHeight -> host -> root.height
+  //     -> bodyHeight -> body.height -> each body child
+  readonly property int chromeHeight: headerBlock.implicitHeight
+    + footerBlock.implicitHeight + Style.spacing.panelGap * 2
+  readonly property int bodyNatural: root.mode === "form" ? createForm.implicitHeight
+    : root.mode === "log" ? logView.implicitHeight
+    : root.mode === "review" ? review.implicitHeight
+    : list.implicitHeight + (emptyState.visible ? emptyState.implicitHeight : 0)
+  implicitHeight: chromeHeight + bodyNatural
+  // 0 before the host has sized us -- first frame, and the keep-loaded reopen --
+  // so the view falls back to its natural height exactly as it did before.
+  readonly property int bodyHeight: root.height > 0
+    ? Model.bodyBudget(root.height, chromeHeight) : bodyNatural
 
   signal closeRequested()
   signal switchPanelRequested(int direction)
@@ -277,9 +293,13 @@ FocusScope {
       onTabRequested: function(direction) { root.switchPanelRequested(direction) }
       onTextKey: function(text) { root.handleTextKey(text) }
 
+      // Three blocks, not a Column: the header and the footer take their
+      // natural heights at the top and bottom, and the body gets whatever is
+      // left. That is what lets the view consume the height its host gives it
+      // instead of only reporting the height its content wants.
       Column {
-        id: column
-        anchors.fill: parent
+        id: headerBlock
+        anchors { top: parent.top; left: parent.left; right: parent.right }
         spacing: Style.spacing.panelGap
 
         PanelHero {
@@ -336,11 +356,46 @@ FocusScope {
           }
         }
 
+        TextField {
+          id: filterField
+          visible: root.mode === "list"
+          width: parent.width
+          foreground: root.foreground
+          // The operator stays on the first line: a line that ends on a
+          // complete expression gets a semicolon inserted for it, and the
+          // rest of the binding is quietly dropped.
+          placeholderText: Model.Glyph.search + "  Filter VMs" +
+            (activeFocus ? "" : "   /")
+          onTextChanged: {
+            root.filterText = text
+            root.cursorIndex = 0
+          }
+          Keys.onEscapePressed: {
+            if (text.length > 0) text = ""
+            else keyCatcher.forceActiveFocus()
+          }
+          Keys.onDownPressed: {
+            keyCatcher.forceActiveFocus()
+            root.moveCursor(0)
+          }
+        }
+      }
+
+      Item {
+        id: body
+        clip: true
+        height: root.bodyHeight
+        anchors {
+          top: headerBlock.bottom
+          topMargin: Style.spacing.panelGap
+          left: parent.left
+          right: parent.right
+        }
+
         CreateForm {
           id: createForm
           visible: root.mode === "form"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           rows: MicrovmState.allRows
           templates: MicrovmState.templates
           sshKeys: MicrovmState.sshKeys
@@ -377,8 +432,7 @@ FocusScope {
         FocusScope {
           id: review
           visible: root.mode === "review"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           implicitHeight: reviewColumn.implicitHeight
 
           Keys.onPressed: function(event) {
@@ -388,11 +442,9 @@ FocusScope {
 
           Column {
             id: reviewColumn
-            width: parent.width
             spacing: Style.spacing.md
 
             Text {
-              width: parent.width
               text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
               textFormat: Text.PlainText
               color: root.foreground
@@ -402,7 +454,6 @@ FocusScope {
             }
 
             Text {
-              width: parent.width
               text: "This line goes into ~/.config/nixarchy/apps.nix:"
               textFormat: Text.PlainText
               color: root.dim
@@ -411,7 +462,6 @@ FocusScope {
             }
 
             Text {
-              width: parent.width
               text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
               textFormat: Text.PlainText
               color: root.foreground
@@ -421,7 +471,6 @@ FocusScope {
             }
 
             Text {
-              width: parent.width
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
                 : "Runs: " + root.reviewArgvs.map(function(a) { return a.slice(0, 4).map(function(x) { return x.indexOf("/") === 0 ? "nixarchy-pkg" : x }).join(" ") }).join(", then ")
@@ -433,7 +482,6 @@ FocusScope {
             }
 
             Text {
-              width: parent.width
               text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
               textFormat: Text.PlainText
               color: root.dim
@@ -443,7 +491,6 @@ FocusScope {
             }
 
             Text {
-              width: parent.width
               horizontalAlignment: Text.AlignRight
               text: "enter write it   esc back to the form"
               textFormat: Text.PlainText
@@ -458,8 +505,7 @@ FocusScope {
         LogView {
           id: logView
           visible: root.mode === "log"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           lines: MicrovmState.log
           title: MicrovmState.streamTitle
           running: MicrovmState.streaming
@@ -469,34 +515,10 @@ FocusScope {
           onBackRequested: root.setMode("list")
         }
 
-        TextField {
-          id: filterField
-          visible: root.mode === "list"
-          width: parent.width
-          foreground: root.foreground
-          // The operator stays on the first line: a line that ends on a
-          // complete expression gets a semicolon inserted for it, and the
-          // rest of the binding is quietly dropped.
-          placeholderText: Model.Glyph.search + "  Filter VMs" +
-            (activeFocus ? "" : "   /")
-          onTextChanged: {
-            root.filterText = text
-            root.cursorIndex = 0
-          }
-          Keys.onEscapePressed: {
-            if (text.length > 0) text = ""
-            else keyCatcher.forceActiveFocus()
-          }
-          Keys.onDownPressed: {
-            keyCatcher.forceActiveFocus()
-            root.moveCursor(0)
-          }
-        }
-
         VmList {
           id: list
           visible: root.mode === "list"
-          width: parent.width
+          anchors.fill: parent
           rows: root.rows
           features: root.features
           pendingKey: MicrovmState.pendingKey
@@ -512,14 +534,14 @@ FocusScope {
         }
 
         Column {
+          id: emptyState
           visible: root.mode === "list" && list.count === 0
-          width: parent.width
+          anchors.fill: parent
           spacing: Style.spacing.sm
           topPadding: Style.spacing.lg
           bottomPadding: Style.spacing.lg
 
           Text {
-            width: parent.width
             horizontalAlignment: Text.AlignHCenter
             text: Model.emptyText({
               everLoaded: MicrovmState.everLoaded,
@@ -534,12 +556,17 @@ FocusScope {
             wrapMode: Text.WordWrap
           }
         }
+      }
+
+      Column {
+        id: footerBlock
+        anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+        spacing: Style.spacing.panelGap
 
         // ------------------------------------------------------------ footer
         //
         // nixarchy-pkg's shape: a hairline, then one line for whatever went
         // wrong or is running, then counts on the left and keys on the right.
-
         Rectangle {
           width: parent.width
           height: Math.max(1, Style.space(1))

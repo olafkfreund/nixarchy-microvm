@@ -24,7 +24,6 @@ Item {
 
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
-  property int maxHeight: Style.space(520)
 
   readonly property color dim: Qt.darker(foreground, 1.5)
   readonly property int count: rowModel.count
@@ -32,9 +31,9 @@ Item {
   signal actionRequested(string key, string verb)
   signal cursorRequested(int index)
 
-  width: parent ? parent.width : implicitWidth
-  implicitHeight: listView.height
-  height: implicitHeight
+  // contentHeight, not the assigned height: the natural size must not be
+  // derived from the size it is given, or the graph closes on itself.
+  implicitHeight: listView.contentHeight
 
   ListModel { id: rowModel }
 
@@ -68,7 +67,7 @@ Item {
     id: listView
 
     width: parent.width
-    height: rowModel.count > 0 ? Math.min(contentHeight, root.maxHeight) : 0
+    height: root.height
     visible: rowModel.count > 0
     spacing: Style.spacing.sm
     clip: true
