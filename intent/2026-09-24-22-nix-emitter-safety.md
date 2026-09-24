@@ -65,10 +65,15 @@ In `parseMachineLines`, `seen["constructor"]` is truthy on a fresh `{}`
 before anything is assigned, so the line is skipped: the write to `apps.nix`
 succeeds and the row never appears. That leaves a declared permanent MicroVM
 the UI denies exists — not editable, not deletable, short of a hand edit. In
-`permanentRows`, `byName["constructor"]` resolves to the `Object`
-constructor, so `byName[name].runtime = …` assigns onto `Object` itself, and
-`Model.js` is a `.pragma library` singleton, so that pollution persists in
-the shared QML JS engine. `toString` and `valueOf` hit the same code:
+`permanentRows`, the machines loop assigns `byName[row.name] = row`
+(`Model.js:383`), which creates an own property and shadows the inherited
+member — so the defect is confined to the case of a unit with no machine
+line, which is precisely the case the reproduction above exercises
+(`machines` empty, `units` carrying `constructor`). There,
+`byName["constructor"]` resolves to the `Object` constructor and
+`byName[name].runtime = …` assigns onto `Object` itself; `Model.js` is a
+`.pragma library` singleton, so that pollution persists in the shared QML JS
+engine. `toString` and `valueOf` hit the same code:
 unreachable through `isVmName` (it rejects capitals), reachable from
 `parseMachineLines` if such a line already sits in `apps.nix`.
 
