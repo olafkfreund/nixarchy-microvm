@@ -424,7 +424,7 @@ FocusScope {
               width: parent.width
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
-                : "Runs: " + root.reviewArgvs.map(function(a) { return a.slice(0, 4).map(function(x) { return x.indexOf("/") === 0 ? "nixarchy-pkg" : x }).join(" ") }).join(", then ")
+                : "Runs: " + root.reviewArgvs.map(function(a) { return [Model.commandName(a)].concat(a.slice(1, 4)).join(" ") }).join(", then ")
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily

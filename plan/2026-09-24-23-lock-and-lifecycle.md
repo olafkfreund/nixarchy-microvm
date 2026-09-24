@@ -78,7 +78,11 @@ the steps keep their numbers so the trail matches this plan.
 3. **`Model.js`: the three pure strings.** `commandName(argv)` — basename of
    `argv[0]`, `"nixarchy-pkg"` when the path ends
    `/nixarchy.pkg/bin/nixarchy-pkg`, `""` for null or empty argv.
-   `processFailure({verb, command, code, stdout, stderr, refused, reason})` —
+   `processFailure({verb, key, command, code, stdout, stderr, refused, reason})` —
+   *(Deviation, recorded at implementation: the approved spec's signature has no
+   `key`, but its own sample output is "creating p1: nixarchy-service-enable did
+   not start", which needs the subject. `key` is added, and omitting it degrades
+   to the verb alone.)*
    wraps `writerError` (`Model.js:1456`) and `errorText` (`:581`), falls back to
    `verb + " failed (exit " + code + ")"`, and returns `verb + ": " + command +
    " " + reason` when `reason` is set. `workingText({verb, key, escapable})` —
