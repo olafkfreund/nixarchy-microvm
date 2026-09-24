@@ -134,7 +134,7 @@ test("reconcilePlan turns one key order into another", () => {
 
 test("counts, summaryText and footerText", () => {
   const rows = disposable().concat(permanent())
-  eq(Model.counts(rows), { total: 7, running: 2, stopped: 5, failing: 1, pending: 1 })
+  eq(Model.counts(rows), { total: 7, running: 2, failing: 1, pending: 1 })
   eq(Model.summaryText(rows, true), "2 of 7 running")
   eq(Model.summaryText([], true), "No VMs")
   eq(Model.summaryText(rows, false), "nixarchy-vm not found")
@@ -215,4 +215,24 @@ test("listActions hides assist when the schema could not be read (#23)", () => {
   // Absent (an older state object) must not hide it.
   ok(Model.listActions(base, {}).assist)
   ok(!Model.listActions({ agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
+})
+
+test("capLog merges, caps each line and keeps the last 400 (#39)", () => {
+  // The whole growth rule, in the one place that owns it.
+  eq(Model.capLog([], ["a"]), ["a"])
+  eq(Model.capLog(["x"], ["a", "b"]), ["x", "a", "b"])
+  eq(Model.capLog(["a"], []), ["a"])
+  eq(Model.capLog(null, null), [])
+
+  // Crossing the cap keeps exactly 400 and drops from the front.
+  const existing = Array.from({ length: 399 }, (_, i) => "e" + i)
+  const capped = Model.capLog(existing, ["n1", "n2", "n3"])
+  eq(capped.length, 400)
+  eq(capped[0], "e2")
+  eq(capped[399], "n3")
+
+  // Incoming lines are cleaned; existing ones are already clean and are not
+  // re-processed.
+  ok(Model.capLog([], ["\u001b[31mred\u001b[0m"])[0] === "red")
+  eq(Model.capLog([], ["x".repeat(3000)])[0].length, 2048)
 })
