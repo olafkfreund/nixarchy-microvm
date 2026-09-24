@@ -139,3 +139,28 @@ test("hiddenReason: the m hint names set-template only when it is missing (#4)",
   eq(Model.hiddenReason(stopped, { vmSetTemplate: false }, "edit"), "changing the template needs nixarchy vm set-template (nixarchy#762)")
   eq(Model.hiddenReason(running, { vmSetTemplate: true }, "edit"), "stop it first to change the template")
 })
+
+test("cardWidth holds a fraction of the host's offer between two bounds (#24)", () => {
+  // Nothing offered yet (first frame): the floor, never 0.
+  eq(Model.cardWidth(0, 0.3, 380, 620), 380)
+  eq(Model.cardWidth(-1, 0.3, 380, 620), 380)
+  // A fraction landing inside, under the floor, and over the ceiling.
+  eq(Model.cardWidth(1600, 0.3, 380, 620), 480)
+  eq(Model.cardWidth(800, 0.3, 380, 620), 380)
+  eq(Model.cardWidth(4000, 0.3, 380, 620), 620)
+  // Rounded, not truncated.
+  eq(Model.cardWidth(1001, 0.5, 100, 900), 501)
+  // A caller that passes the bounds the wrong way round still gets a sane span.
+  eq(Model.cardWidth(1600, 0.3, 620, 380), 480)
+  eq(Model.cardWidth(0, 0.3, 620, 380), 380)
+})
+
+test("bodyBudget is what the chrome leaves (#24)", () => {
+  eq(Model.bodyBudget(1000, 200), 800)
+  eq(Model.bodyBudget(0, 200), 0)
+  eq(Model.bodyBudget(-5, 200), 0)
+  // A card too short for its own chrome clamps to 0 rather than going negative.
+  eq(Model.bodyBudget(150, 200), 0)
+  eq(Model.bodyBudget(200, 200), 0)
+  eq(Model.bodyBudget(201, 200), 1)
+})
