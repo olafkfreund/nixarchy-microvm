@@ -12,7 +12,10 @@ const envelope = (obj) => JSON.stringify({ type: "result", subtype: "success", i
 
 test("schema.json is the one copy, strict, and names exactly the form's agent fields", () => {
   eq(SCHEMA.additionalProperties, false)
-  eq(Object.keys(SCHEMA.properties).sort(), ["autostart", "cores", "kind", "memory", "name", "reasoning", "shares", "sshPort", "template"])
+  // A comparison, not a literal: the nine names were maintained by hand here
+  // and in schema.json, so the two could drift. Now there is one copy of the
+  // list and neither side is written out twice (#36).
+  eq(Object.keys(SCHEMA.properties).sort(), Object.keys(Model.AGENT_FIELDS).sort())
   ok(!("sshKey" in SCHEMA.properties))
   eq(SCHEMA.properties.shares.items.additionalProperties, false)
   ok(!("SCHEMA" in Model))

@@ -204,10 +204,19 @@ is the check that keeps this paragraph honest.
   silently inside a QML `Process`, so document it as a requirement.
 - **Argv arrays only, never `sh -c`.** Every command is built in `Model.js` as an
   array and returns `null` on invalid input.
-- **The agent's reply is data for the form and nothing else.** It is parsed with
-  the schema, converted per field with the field's own type, validated as if typed,
-  shown to the user, and confirmed by them. Nothing in it is executed, and the call
-  itself runs `claude` with `--restricted --strict-mcp-config --tools ""`.
+- **The agent's reply is data for the form and nothing else.** `schema.json`
+  goes *out* with the call, as `--json-schema`, to shape the model's answer; it
+  is not a gate on the way back. The gate is the per-field conversion in
+  `Model.applyAgentReply`, which is stricter than the schema: a value of the
+  wrong type is dropped rather than coerced, a key absent from `AGENT_FIELDS`
+  is dropped — so `sshKey`, `describe` and `editing` are not agent-settable at
+  all — `kind` must be in `KINDS`, and strings pass `sanitize` at the field's
+  own length. Every value that survives goes through `validateForm` as if the
+  user had typed it, is shown, and is confirmed by them; `machineSnippet`
+  refuses the line outright if `nixSafe` ever fails on it. The schema and
+  `AGENT_FIELDS` may not name different fields *(checked: schema-fields)*.
+  Nothing in a reply is executed, and the call itself runs `claude` with
+  `--restricted --strict-mcp-config --tools ""`.
 - **Every permanent-VM write goes through nixarchy.pkg's writers.** `opt set`,
   `opt replace`, `nixarchy-opt-remove` and `nixarchy-service-enable`, never a file
   write, never `/var/lib/microvms`, never a unit file, never the flake. Applying is
