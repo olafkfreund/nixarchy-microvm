@@ -1,0 +1,18 @@
+## Lines that legitimately name the two Arch package managers. Trimmed exact
+## content, matched with grep -qxF. '##' starts a comment here, not '#',
+## because an exempted line may itself be a comment in YAML or Nix.
+##
+## Only AGENTS.md's statement of the rule remains: the enumerations in
+## AGENTS.md, README.md and ci.yml were deleted when flake.nix became the
+## single source of truth for what nix flake check enforces.
+##
+## Three classes are excluded from the scan instead of listed, because each
+## grows or churns without bound: intent/, spec/ and plan/ are design history
+## quoting the rule to reason about it; and flake.nix and this file each
+## necessarily contain the pattern they exist to search for.
+##
+## A new line anywhere else fails the check until it is removed, or added here
+## as a deliberate, reviewable entry.
+
+- **No `pacman` or `yay`**, not even in comments. *(checked: pacman)* nixarchy
+legitimate occurrence is one reviewable line in `tests/pacman-allowed.txt`.

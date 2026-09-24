@@ -22,9 +22,23 @@ const Model = load("Model.js")
 let passed = 0
 const failures = []
 
+// Model.js is synchronous, so an async test is always a mistake -- and a
+// silent one: an un-awaited rejection used to be counted as a pass, and the
+// run exited 0. The promise is consumed before the failure is recorded,
+// because Node kills the process on an unhandled rejection and that would
+// override process.exitCode.
 function test(name, fn) {
+  if (fn && fn.constructor && fn.constructor.name === "AsyncFunction") {
+    failures.push({ name: name, error: new Error("async test function; Model.js is synchronous") })
+    return
+  }
   try {
-    fn()
+    const value = fn()
+    if (value && typeof value.then === "function") {
+      value.catch(() => {})
+      failures.push({ name: name, error: new Error("async test function; Model.js is synchronous") })
+      return
+    }
     passed += 1
   } catch (error) {
     failures.push({ name: name, error: error })
@@ -88,6 +102,7 @@ module.exports = {
   eq: assert.deepStrictEqual,
   ok: assert.ok,
   report: report,
+  failures: failures,
   Model: Model,
   LIST_TEXT, LIST_JSON, TEMPLATES_TEXT, TEMPLATES_JSON, TEMPLATES,
   unit, UNITS_JSON, PATH, SNIPPET, APPS_NIX, PENDING_JSON

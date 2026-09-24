@@ -12,4 +12,6 @@ if (files.length === 0) {
 
 for (const file of files) require(path.join(dir, file))
 
-process.exit(harness.report())
+// exitCode, not exit(): process.exit() would cut off anything Node still has
+// to report, which is how an async failure used to vanish.
+process.exitCode = harness.report()
