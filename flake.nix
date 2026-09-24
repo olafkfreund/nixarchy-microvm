@@ -161,8 +161,24 @@
                 echo "Arch package manager reference above" >&2; exit 1
               fi
 
-              # A literal colour survives a theme switch and looks wrong.
-              if grep -nE '"#[0-9a-fA-F]{3,8}"' ${plugin}/*.qml; then
+              # check: colours
+              # A literal colour survives a theme switch and looks wrong. The
+              # old pattern saw only double-quoted hex in *.qml, so a
+              # single-quoted colour, an rgba() string, a bare colour name and
+              # anything in Model.js all went past it.
+              # "transparent" is deliberately allowed: no Color.* token
+              # expresses it, and Menu.qml, VmList.qml:151 and :196 are right as
+              # they are. Qt.rgba derived from a token is not all-literal, so
+              # ShortcutSheet.qml:32 is not flagged.
+              # [[:space:]] rather than \s, so the patterns need no GNU
+              # extension.
+              colour_hit=
+              grep -nE "['\"]#[0-9a-fA-F]{3,8}['\"]" ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              grep -nE "['\"](rgba?|hsla?)\(" ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              grep -nE 'colou?r[[:space:]]*:[[:space:]]*"[a-z]+"' ${plugin}/*.qml ${plugin}/*.js \
+                | grep -vF '"transparent"' && colour_hit=1
+              grep -nE 'Qt\.rgba\([0-9., ]*\)' ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              if [ -n "$colour_hit" ]; then
                 echo "hardcoded colour above; use a Color.* token" >&2; exit 1
               fi
 
