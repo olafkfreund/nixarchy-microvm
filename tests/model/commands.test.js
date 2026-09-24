@@ -224,3 +224,34 @@ test("reviewCommandLines shows the whole command (#25)", () => {
   eq(Model.reviewCommandLines([], SNIP, OPT), [])
   eq(Model.reviewCommandLines(null, "", ""), [])
 })
+
+test("one name rule for every apps.nix writer (#38)", () => {
+  const PKG = "/home/user/.config/omarchy/plugins/nixarchy.pkg/bin/nixarchy-pkg"
+  const SNIP = '{ template = "shell"; }'
+
+  // A leading digit is the real defect: `{ 9x = 1; }` is a Nix syntax error,
+  // so a writer must never emit it.
+  ok(!Model.isNixAttrName("9x"))
+  eq(Model.optRemoveArgv("9x"), null)
+  eq(Model.optReplaceArgv(PKG, "9x", SNIP), null)
+
+  // a_b is NOT a defect — it is valid unquoted Nix, and a machine called that
+  // in someone's apps.nix must stay removable. The issue originally said
+  // otherwise; a predicate built from it would have orphaned exactly the rows
+  // it was meant to protect.
+  ok(Model.isNixAttrName("a_b"))
+  ok(Model.isNixAttrName("_module"))
+  ok(Model.optRemoveArgv("a_b"))
+  ok(Model.optReplaceArgv(PKG, "a_b", SNIP))
+
+  // isVmName, the creation rule, stays strictly inside it.
+  ok(Model.isNixAttrName("p1") && Model.isVmName("p1", "permanent"))
+  ok(Model.isNixAttrName("P1") && !Model.isVmName("P1", "permanent"))
+  eq(Model.optSetArgv(PKG, "P1", SNIP), null)
+
+  // Neither writer accepts what is not a name at all.
+  for (const bad of ["", "a.b", "a b", "a/b", "-x", "a'b"]) {
+    ok(!Model.isNixAttrName(bad), bad)
+    eq(Model.optRemoveArgv(bad), null)
+  }
+})

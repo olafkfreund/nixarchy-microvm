@@ -170,6 +170,16 @@ function isTemplateName(value) {
   return /^[a-z][a-z0-9-]{0,31}$/.test(String(value === undefined || value === null ? "" : value))
 }
 
+// A name that may stand as an unquoted Nix attribute: the floor for every
+// writer that touches apps.nix. Laxer than isVmName, the rule for what this
+// plugin will *create*; stricter than isReportedName, what the CLI and systemd
+// may hand back. A leading digit is the case that matters -- `{ 9x = 1; }` is
+// a Nix syntax error, while `{ a_b = 1; }` is fine, so an underscore is in and
+// anywhere. `'` is legal in Nix and left out on purpose.
+function isNixAttrName(value) {
+  return /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/.test(String(value === undefined || value === null ? "" : value))
+}
+
 var OPT_PREFIX = "programs.nixarchy.services.microvm.machines."
 
 function optPath(name) {
@@ -1273,11 +1283,11 @@ function optSetArgv(pkg, name, snippet) {
 }
 
 function optReplaceArgv(pkg, name, snippet) {
-  return pkg && isReportedName(name) && snippet ? [pkg, "opt", "replace", optPath(name), snippet] : null
+  return pkg && isNixAttrName(name) && snippet ? [pkg, "opt", "replace", optPath(name), snippet] : null
 }
 
 function optRemoveArgv(name) {
-  return isReportedName(name) ? ["nixarchy-opt-remove", optPath(name)] : null
+  return isNixAttrName(name) ? ["nixarchy-opt-remove", optPath(name)] : null
 }
 
 function copyArgv(name) {
