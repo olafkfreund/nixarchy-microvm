@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 26
 intent: intent/2026-09-24-26-enforcement-gaps.md
 ---
@@ -116,10 +116,24 @@ path. Withdrawn: the rule says "not even in comments", so excluding whole docume
 claims a scope the check does not have — a genuine `pacman -S` in `README.md`
 would pass — and it scanned `README.md` and excluded it in the same paragraph.
 
-Instead the exemption is per line, by exact content. `tests/pacman-allowed.txt`
-holds the trimmed text of every line in the repository that legitimately names
-the two words — each one a quotation of the rule, the check's own regex, or an
-older artifact recording it. Measured with `grep -Inw`, that is ten lines today:
+Instead: the three artifact directories are excluded as a class, and every other
+tracked file is scanned with a per-line allow-list.
+
+`intent/`, `spec/` and `plan/` are excluded because they are design history that
+quotes the rule in order to reason about it, and because the set grows without
+bound — this very task's three artifacts contain 29 of the repository's 39
+occurrences. An earlier version of this section put the count at ten and listed
+only the 2026-09-18 artifacts; it had not counted its own files, so the check as
+specified would have failed on the branch that introduces it. A per-line
+allow-list over artifacts would need a new entry every time anyone writes about
+the rule, which is a maintenance tax that ends with the check being disabled.
+
+Everything else is scanned, including `AGENTS.md`, `README.md`, `docs/`,
+`flake.nix`, `.github/`, `manifest.json`, `microvm-binds.lua`,
+`share/omarchy-menu.jsonc` and all runtime content. Their legitimate occurrences
+are exempted line by line in `tests/pacman-allowed.txt`, by trimmed exact
+content. Measured with `grep -Inw` over `git ls-files` minus the three artifact
+directories, that is five lines today:
 
 | Path | Lines |
 | --- | --- |
@@ -127,14 +141,14 @@ older artifact recording it. Measured with `grep -Inw`, that is ten lines today:
 | `README.md` | 236 |
 | `flake.nix` | 138 |
 | `.github/workflows/ci.yml` | 18 |
-| `intent/2026-09-18-1-microvm-plugin.md` | 92 |
-| `spec/2026-09-18-1-microvm-plugin.md` | 459 |
-| `plan/2026-09-18-1-microvm-plugin.md` | 172, 354, 550 |
 
-The check greps the tracked tree, trims each hit, and subtracts the allow-list;
-anything left fails and is printed with its path and line. A new occurrence in
-any file — prose, artifact or runtime — fails until it is either removed or
-added to the allow-list as a deliberate, reviewable line. `grep -I` skips
+Five is stable: it changes only when the rule's own wording moves, which is a
+reviewable event. A genuine `pacman -S` in `README.md` or in any shipped file
+still fails, which is what the earlier whole-file exclusion of `README.md` got
+wrong.
+
+The check greps that scope, trims each hit, and subtracts the allow-list;
+anything left fails and is printed with its path and line. `grep -I` skips
 binaries: `docs/img/*.png` and `*.mp4` contain the byte sequences as substrings
 and matched the old case-insensitive grep, though none matches with `-w`.
 
