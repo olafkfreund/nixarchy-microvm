@@ -910,6 +910,14 @@ function machineSnippet(form, rows, templates, hostHome) {
   parts.push("shares = [ " + (list.length ? list.join(" ") + " " : "") + "];")
   var key = normalizeSshKey(f.sshKey)
   if (key) parts.push("modules = [ { users.users.dev.openssh.authorizedKeys.keys = [ " + nixString(key) + " ]; } ];")
+  // Every string this line carries, checked before it is written. The field
+  // allowlists above are what make this unreachable; it is here so that a
+  // future field cannot quietly reintroduce the hole HOME opened.
+  var written = [trim(f.template), key]
+  for (var t = 0; t < shares.length; t++) written.push(shares[t].source, shares[t].mountPoint, tags[t])
+  for (var w = 0; w < written.length; w++) {
+    if (!nixSafe(written[w])) return null
+  }
   return "{ " + parts.join(" ") + " }"
 }
 

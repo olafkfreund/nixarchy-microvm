@@ -167,13 +167,56 @@ test("machineSnippet writes every field, defaults included, from validated value
   eq((line.match(/"/g) || []).length % 2, 0)
 })
 
-test("parseMachineSnippet reads exactly what machineSnippet writes: parse(emit(f)) == f", () => {
-  const f = form({ template: "python", memory: "4096", cores: "2", sshPort: "2222", shares: "/home/user/src:/mnt/src /srv:/mnt/srv", sshKey: KEY })
-  const back = Model.parseMachineSnippet(Model.machineSnippet(f, rows, TEMPLATES, HOME))
-  eq(back, { template: "python", autostart: true, memory: 4096, cores: 2, sshPort: 2222, sshKey: KEY, shares: "/home/user/src:/mnt/src /srv:/mnt/srv" })
-  const again = Model.formFromRow(Object.assign({ kind: "permanent", name: "t1" }, back, { memory: String(back.memory), cores: String(back.cores), sshPort: String(back.sshPort) }))
-  eq(Model.machineSnippet(again, rows, TEMPLATES, HOME), Model.machineSnippet(f, rows, TEMPLATES, HOME))
-  eq(Model.parseMachineSnippet(snippet({})), { template: "shell", autostart: true, memory: 1024, cores: 1, sshPort: null, sshKey: "", shares: "" })
+test("parse(emit(f)) equals f's normalised fields, across the field space (#22)", () => {
+  // The loose form parse(emit(f)) == f is false and always was: the parser
+  // discards tags and returns canonical share paths, so equality holds against
+  // f's NORMALISED fields, never against an arbitrary form object. Non-null for
+  // every case is also what proves step 5's nixSafe guard unreachable for any
+  // form a user can submit.
+  const SHARES = [
+    "",
+    "/srv:/mnt/srv",
+    "/a:/mnt/a /b:/mnt/b /c:/mnt/c",
+    "~/src:/mnt/src",
+    "~/c++:/mnt/c++",
+    "/a:/mnt/" + "x".repeat(65),
+    "/a:/mnt/c++ /b:/mnt/c--",
+  ]
+  let checked = 0
+  for (const template of ["shell", "python"]) {
+    for (const autostart of [true, false]) {
+      for (const [memory, cores] of [["256", "1"], ["131072", "64"]]) {
+        for (const sshPort of ["", "1024", "65535"]) {
+          for (const sshKey of ["", KEY]) {
+            for (const shares of SHARES) {
+              const f = form({ template, autostart, memory, cores, sshPort, sshKey, shares })
+              const sn = Model.machineSnippet(f, rows, TEMPLATES, HOME)
+              ok(sn, "emits: " + JSON.stringify({ template, memory, sshPort, shares }))
+              const back = Model.parseMachineSnippet(sn)
+              ok(back, "reads back: " + sn)
+              eq(back.template, template)
+              eq(back.autostart, autostart)
+              eq(back.memory, parseInt(memory, 10))
+              eq(back.cores, parseInt(cores, 10))
+              eq(back.sshPort, sshPort === "" ? null : parseInt(sshPort, 10))
+              eq(back.sshKey, Model.normalizeSshKey(sshKey))
+              // shares come back as the source:mountPoint pairs parseShares
+              // produced: ~ expanded, the guest path canonical, tags gone.
+              const want = Model.parseShares(shares, HOME).shares
+                .map(sh => sh.source + ":" + sh.mountPoint).join(" ")
+              eq(back.shares, want)
+              checked++
+            }
+          }
+        }
+      }
+    }
+  }
+  ok(checked === 2 * 2 * 2 * 3 * 2 * SHARES.length, "covered the cross product: " + checked)
+
+  const again = Model.formFromRow(Object.assign({ kind: "permanent", name: "t1" },
+    Model.parseMachineSnippet(snippet({})), { memory: "1024", cores: "1", sshPort: "" }))
+  eq(Model.machineSnippet(again, rows, TEMPLATES, HOME), snippet({}))
 })
 
 test("parseMachineSnippet refuses anything outside the grammar", () => {
