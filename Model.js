@@ -304,8 +304,11 @@ function parseUnits(raw) {
 // assignment whose left-hand path equals the marker's, and whose value
 // reads back under the grammar machineSnippet writes. A marker with
 // anything else on its line is shown but never rewritten
-// (managed-unsupported). A commented-out line declares nothing and is
-// skipped: nixarchy would not build it either.
+// (managed-unsupported). So is a marker whose name is not a valid unquoted
+// Nix attribute: the writers refuse such a name, so the row must not offer an
+// edit or a remove it cannot carry out. Its fields are kept as parsed, so the
+// row still shows what the line says. A commented-out line declares nothing
+// and is skipped: nixarchy would not build it either.
 function parseMachineLines(text) {
   var out = []
   var lines = String(text || "").split("\n")
@@ -320,7 +323,7 @@ function parseMachineLines(text) {
     var body = line.substring(0, marker.index)
     var assign = body.match(/^\s*programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*=\s*([\s\S]*?);\s*$/)
     var fields = assign && assign[1] === name ? parseMachineSnippet(assign[2]) : null
-    out.push({ name: name, ownership: fields ? "managed" : "managed-unsupported", fields: fields, line: trim(line) })
+    out.push({ name: name, ownership: fields && isNixAttrName(name) ? "managed" : "managed-unsupported", fields: fields, line: trim(line) })
   }
   return out
 }
