@@ -142,6 +142,11 @@
               # validation -- a malformed properties or required would pass.
               jq -e '.additionalProperties == false and (has("$schema") | not)' ${plugin}/schema.json > /dev/null
 
+              # check: schema-fields
+              # schema.json steers the model; applyAgentReply is the gate. The
+              # two may not name different fields (#36).
+              node tests/schema-fields.js
+
               # check: binds
               # The Home Manager module swaps the chord by string replacement,
               # so the shipped file must carry the default one verbatim.
