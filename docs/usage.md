@@ -136,6 +136,14 @@ Both surfaces show the same state. A build started in the menu shows up in the
 popup's log, and while anything changes, a start or delete from the other
 surface is refused. Closing a surface never stops a job.
 
+The list refreshes every few seconds and sorts running machines first, so rows
+move on their own. The cursor is tied to the machine you selected rather than
+to a position in the list: start the VM you are on and the highlight travels
+with it as it jumps to the top, so pressing `s` again stops that same machine
+and not whatever slid into its place. If the selected machine leaves the list —
+you deleted it, or the filter no longer matches it — the cursor stays at that
+position and takes whichever row moves up.
+
 ## Everyday tasks
 
 ### A throwaway shell
