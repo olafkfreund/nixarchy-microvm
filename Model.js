@@ -1486,6 +1486,14 @@ function processFailure(info) {
   return subject + " failed (exit " + (f.code === undefined || f.code === null ? "?" : f.code) + ")"
 }
 
+// Feature detection is re-run on a schedule, not on every open: probing on
+// each open re-spawned five processes a toggle, and Quickshell drops a command
+// assigned to a Process that is still running.
+function probeStale(now, probedAt) {
+  if (!probedAt) return true
+  return (now - probedAt) >= 600000
+}
+
 // Which reads are showing a value older than the last poll. Fixed order so the
 // line is stable, empty when everything is current.
 function staleList(flags) {

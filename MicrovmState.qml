@@ -86,19 +86,20 @@ Singleton {
     servicesRow: root.serviceHeals ? true : root.servicesRow
   })
 
+  // When the last probe ran. Every spawn is guarded: assigning .command to a
+  // Process that is still running has its command silently dropped.
+  property double probedAt: 0
+
   function probe() {
     root.probed = true
-    templatesProcess.command = Model.templatesArgv()
-    templatesProcess.running = true
-    helpProcess.command = Model.helpArgv()
-    helpProcess.running = true
-    agentProbe.command = Model.defaultAgentArgv()
-    agentProbe.running = true
+    root.probedAt = Date.now()
+    if (!templatesProcess.running) { templatesProcess.command = Model.templatesArgv(); templatesProcess.running = true }
+    if (!helpProcess.running) { helpProcess.command = Model.helpArgv(); helpProcess.running = true }
+    if (!agentProbe.running) { agentProbe.command = Model.defaultAgentArgv(); agentProbe.running = true }
     var keys = Model.sshKeysArgv(root.home)
-    if (keys) { keysProcess.command = keys; keysProcess.running = true }
+    if (keys && !keysProcess.running) { keysProcess.command = keys; keysProcess.running = true }
     pkgFile.reload()
-    serviceHelpProbe.command = Model.serviceHelpArgv()
-    serviceHelpProbe.running = true
+    if (!serviceHelpProbe.running) { serviceHelpProbe.command = Model.serviceHelpArgv(); serviceHelpProbe.running = true }
   }
 
   // ---------------------------------------------------------------- data
@@ -161,7 +162,7 @@ Singleton {
   // -------------------------------------------------------------- refresh
 
   function refresh() {
-    if (!root.probed) root.probe()
+    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
     if (!listProcess.running) {
       root.loading = true
       root.polls += 1
@@ -193,7 +194,7 @@ Singleton {
     onTriggered: root.refresh()
   }
 
-  onActiveChanged: if (active) { root.probe(); refresh() }
+  onActiveChanged: if (active) refresh()
   onShowStoppedChanged: if (root.active || root.background) root.refresh()
 
   // -------------------------------------------------------------- actions

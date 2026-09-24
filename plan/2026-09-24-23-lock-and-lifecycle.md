@@ -166,7 +166,11 @@ the steps keep their numbers so the trail matches this plan.
     (Model.probeStale(Date.now(), root.probedAt)) root.probe()`.
     `onActiveChanged` (`:182`) drops its direct `root.probe()` and calls only
     `refresh()`. → verify by `node tests/run.js` and live check 6.
-11. **`Menu.qml` teardown.** Beside `close()` (`:70`): `Component.onDestruction:
+11. **`Menu.qml` teardown.** *(Deviation, recorded at implementation: landed in
+    the same commit as step 10. Both are one-line lifecycle corrections in
+    different files with no dependency between them, and neither is separately
+    verifiable until the deferred live checks run — splitting them would have
+    produced two commits a reviewer must read together anyway.)* Beside `close()` (`:70`): `Component.onDestruction:
     if (root.opened) MicrovmState.release("view")` — `Panel.qml:43`-`:46`'s
     shape, a no-op when the host did call `close()`. QML-only. → verify by
     repeating live check 2 with the menu left open across the reload: `views`

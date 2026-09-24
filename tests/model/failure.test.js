@@ -45,3 +45,12 @@ test("staleList names the degraded reads, in a fixed order (#23)", () => {
   eq(Model.staleList({ help: true, units: true, pending: true }), ["units", "pending", "help"])
   eq(Model.staleList({ pending: true, help: true }), ["pending", "help"])
 })
+
+test("probeStale re-probes on a schedule, not on every open (#23)", () => {
+  const now = 1700000000000
+  ok(Model.probeStale(now, 0), "never probed")
+  ok(Model.probeStale(now, null), "no timestamp")
+  ok(!Model.probeStale(now, now - 9 * 60000), "nine minutes is fresh")
+  ok(Model.probeStale(now, now - 600000), "ten minutes exactly is stale")
+  ok(Model.probeStale(now, now - 600001), "ten minutes and a millisecond")
+})
