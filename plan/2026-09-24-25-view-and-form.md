@@ -192,8 +192,8 @@ with `hl.dsp.cursor.move`, and send the whole take as one `wtype` process under
 2. `s` on a disposable VM so a build streams; `c`, fill a permanent VM, enter, enter at
    the review. Every field is still there, the footer shows the busy text, and enter
    after the build completes writes the line. (A, step 5.)
-3. At the review, read the "Runs:" block on both surfaces: the full `opt set` command,
-   the value shown as the reference to the snippet above it, no token cut. (A, step 6.)
+3. At the review, on both surfaces: the full `opt set` command, its value shown as the
+   reference to the snippet above it, no token cut. (A, step 6.)
 4. `c`, click the "Kind" row: the cursor moves, the kind does not flip. Space flips it.
    Click it again: still nothing. (B, step 9.)
 5. Permanent form, assist on: enter on describe, tab to sshKey, reply with
@@ -202,7 +202,7 @@ with `hl.dsp.cursor.move`, and send the whole take as one `wtype` process under
 6. Type an invalid name, click another field: the name's error shows. (B, steps 8–9.)
 7. Popup, a permanent row with five buttons: `qs log -i <instance>` reports no
    negative-width or invalid-geometry warning for the row. The name being *readable*
-   again at that width is #24's check, not this one's. (C, step 11.)
+   again is #24's check, not this one's. (C, step 11.)
 8. Assist and apply both enabled, popup: the legend elides, the counts do not vanish.
    (C, step 12.)
 9. `?` on both surfaces: the Question group is there, and the form's j/k line reads
