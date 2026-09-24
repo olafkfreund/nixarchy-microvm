@@ -33,8 +33,12 @@ plain absolute path, so ~/ cannot be expanded; write the path in full" }`, so
 returns null through the gate it already has at `Model.js:854`. A user with
 `HOME=/home/${builtins.currentTime}` sees that message on the shares field,
 and only if a share of theirs uses `~/`. That also closes the empty-`hostHome`
-literal `~`. HOME reaches `consoleArgv` (`Model.js:1105`) too, as one argv
-element, which needs no quoting and is left alone.
+literal `~`. HOME reaches two other builders too — `sshArgv` (`Model.js:1098`,
+which splices it at `:1105` to build an `-i` path) and `sshKeysArgv`
+(`Model.js:1435`) — and in both it is one argv element, which needs no Nix
+quoting and is left alone. Neither is `consoleArgv` (`Model.js:1051`), which
+takes a name and no home; an earlier draft of this spec cited that function and
+that line together, and both were wrong.
 
 **Tags.** `shareTags` (`Model.js:724`) sanitises what it derives rather than
 `isPath` forbidding it: `base.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 58) ||
