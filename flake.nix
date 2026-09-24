@@ -136,11 +136,17 @@
               [ -z "$(comm -3 required packaged)" ] || exit 1
 
               # check: schema
-              # Asserts exactly two things about the schema handed to claude:
-              # additionalProperties is false, and there is no $schema key,
-              # which claude's validator refuses. It is not JSON-Schema
-              # validation -- a malformed properties or required would pass.
-              jq -e '.additionalProperties == false and (has("$schema") | not)' ${plugin}/schema.json > /dev/null
+              # Structure, not JSON-Schema validation: additionalProperties is
+              # false, there is no $schema key (claude's validator refuses one),
+              # properties and required are the right shapes, every property
+              # declares a type, and required names nothing that is not a
+              # property. Which fields those are is # check: schema-fields.
+              jq -e '.additionalProperties == false
+                and (has("$schema") | not)
+                and (.properties | type) == "object"
+                and (.required | type) == "array" and (.required | length) > 0
+                and ([.properties[] | has("type")] | all)
+                and ((.required - (.properties | keys)) == [])' ${plugin}/schema.json > /dev/null
 
               # check: schema-fields
               # schema.json steers the model; applyAgentReply is the gate. The
