@@ -140,7 +140,12 @@ split commit because its `height: implicitHeight` (`:37`) conflicts with the
    and `logList.height` (`:98`) with `root.height > 0 ? Math.max(0, root.height -
    root.logChrome) : Style.space(340)`. 340 survives with a new meaning: the
    height the log *asks* for, not a cap it can never exceed. → verify by test 5.
-7. **#25's guards.** If #25 landed first its `Math.max(0, …)` width guards sit on
+7. **#25's guards.** *(Resolved 2026-09-24, no commit needed: #25 has not
+   landed, so its four guards are not in this tree and there was nothing to
+   delete or keep. The contradiction was put to the owner and settled — the
+   guards are not superseded, because steps 1-6 replace none of those four
+   width expressions — and spec §5a has been corrected to say so. #25 keeps
+   findings 7 and 8.)* If #25 landed first its `Math.max(0, …)` width guards sit on
    `VmList.qml:185`, `CreateForm.qml:266`, `CreateForm.qml:368` and
    `LogView.qml:76`. Spec §5a rules them superseded *by the arithmetic that
    replaces them* — and §1 and §3 specify no replacement for those four width

@@ -42,7 +42,7 @@ form, never for an action.
 | `MicrovmView.qml` | Interaction: modes (list / form / review / log), cursor, filter, confirmations, keys. Shared by both surfaces. |
 | `VmList.qml`, `CreateForm.qml`, `LogView.qml`, `ShortcutSheet.qml` | Drawing pieces used by the view. |
 | `Panel.qml` | The bar widget host: glyph, `KeyboardPanel` popup, and IPC target `nixarchy.microvm.bar`. |
-| `Menu.qml` | The full-screen menu host (manifest kind `menu`). It scales the view 1.45×. |
+| `Menu.qml` | The full-screen menu host (manifest kind `menu`). It sizes its card from the focused screen and hosts the view unscaled. |
 | `manifest.json` | Plugin id `nixarchy.microvm`, kinds `menu` + `bar-widget`, `keepLoaded: true`, settings schema. |
 | `flake.nix` | The package (an explicit `files` list, copied as real files) and `checks.<system>.default`. |
 | `share/omarchy-menu.jsonc` | The Omarchy menu row users paste in. |
@@ -139,7 +139,11 @@ host's own permanent machine and the wallpaper:
    - The owner must not be using the desktop. If a workspace changes under
      you, stop.
    - Take stills with `docs/capture.sh --shot NAME X,Y WxH`, cropped to the
-     card; the popup card is 456 px wide, the menu card 1028 px.
+     card. The card is derived from the screen and the desktop text size, so
+     it has no fixed width: 456 px and 1028 px were the popup and the menu
+     measured on DP-1 at text size 12, not constants. Take a full-output shot
+     first, read the card rectangle off it, then crop; `--shot` keeps its fixed
+     geometry.
    - Record with `wl-screenrec -g …`. It refuses a region that crosses an
      output edge by even one pixel.
    - The SSH key list shows the owner's public keys: clear the field before
@@ -163,6 +167,10 @@ Each rule records a real failure or a hard constraint:
 - **No symlinks anywhere in the repository.** `omarchy plugin add` clones this repo
   *as* the plugin folder, and `omarchy-plugin-validate` refuses any symlink inside
   it. That is why `CLAUDE.md` imports `AGENTS.md` instead of linking to it.
+- **A surface derives its card from the screen and its body from the height its
+  host gave it.** No render transform: text is laid out at the size it is drawn.
+  `Style.space()` is a rem unit and tracks the desktop text size only, so a fixed
+  `Style.space()` dimension is the same physical size on every monitor.
 - **No hardcoded colours.** Use `Color.*`, `Style.*` and `Border.*` tokens, so themes
   switch cleanly. `nix flake check` fails on `"#rrggbb"`.
 - **No `pacman` or `yay`**, not even in comments. nixarchy fails the rebuild on them.
