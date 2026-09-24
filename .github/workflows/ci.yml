@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# Actions are tag-pinned on purpose. There are no secrets in this workflow and
+# no pull_request_target, so with contents: read a repointed tag reaches the
+# runner and nothing else. SHA pins would cost a bump on every renovation to
+# close a hole that is already this narrow.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
