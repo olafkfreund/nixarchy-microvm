@@ -60,7 +60,13 @@ or after a filter change, which clears the key anyway.
 
 **Hover is in scope, and also keyed.** `signal cursorRequested(int index)`
 (`VmList.qml:33`) becomes `cursorRequested(string key)`, and `VmList.qml:123`
-sends `rowSurface.row.key`; `setCursor` takes a key and finds its index. It
+sends `rowSurface.row.key`; `setCursor` takes a key and finds its index. A key
+that is not in `rows` is a no-op: `setCursor` leaves `cursorKey` and
+`cursorIndex` untouched and returns, rather than clearing the selection or
+falling back to index 0. This is a public interaction boundary — hover normally
+supplies a visible key, but IPC and a mid-poll delegate can supply a stale one,
+and losing the user's selection to a stale hover would reintroduce the bug in a
+new form. It
 belongs here: same symptom, same property, and leaving the mouse path on
 indices means one input writes a position while the other writes an identity —
 half a fix by construction, and a longer paragraph to justify than to do.
@@ -115,6 +121,16 @@ AGENTS.md's "Logic goes in `Model.js`, with a Node test".
   a stationary pointer. If it does not, the highlight stays on the machine the
   pointer *was* over until the pointer moves a pixel — today's behaviour, not a
   regression, and hover never dispatches an action.
+- **The drawn highlight is narrower than the intent's wording.** The approved
+  intent says "the highlighted row and the row the pointer is over stay the same
+  row after a refresh". This design delivers that for *acting* on a row
+  unconditionally, and for *drawing* it in every case except the one frame
+  described above and the stationary-pointer case below. That gap is accepted
+  deliberately rather than closed: making the cursor update and `sync()` atomic
+  would mean `MicrovmView` driving `VmList`'s model mutation, which couples the
+  two across the surface boundary for a one-frame cosmetic artefact that cannot
+  dispatch an action. The outcome to verify against is therefore the acting
+  guarantee, absolute, plus the drawing guarantee, steady-state.
 - **The delete path is unaffected.** `askRemove` (`:176-195`) already captures
   `row.key` and re-resolves with `Model.rowByKey(MicrovmState.allRows, key)`
   inside the confirmation closure, so it already names and acts on the row the
