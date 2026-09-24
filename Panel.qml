@@ -103,7 +103,12 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: view.keyTarget
-    contentWidth: panel.fittedContentWidth(Style.space(470))
+    // A fraction of what this screen offers, floored and capped in Style.space
+    // units so the desktop text size still moves it. fittedContentWidth's cap
+    // argument has always existed and was never passed.
+    contentWidth: panel.fittedContentWidth(
+      Model.cardWidth(panel.availableCardWidth, 0.30, Style.space(380), Style.space(620)),
+      Style.space(620))
     contentHeight: panel.fittedContentHeight(view.implicitHeight)
 
     MicrovmView {

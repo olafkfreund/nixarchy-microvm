@@ -24,7 +24,10 @@ Item {
   property bool opened: false
   property var targetScreen: null
 
-  readonly property int viewWidth: Style.space(680)
+  // The menu takes a share of the monitor it opens on, not a fixed rem width.
+  // 1100 matches nixarchy.pkg's menu; card.width keeps panel.width * 0.9 as a
+  // hard ceiling on top of this.
+  readonly property int viewWidth: Model.cardWidth(panel.width, 0.55, Style.space(560), Style.space(1100))
 
   function focusedScreen() {
     var monitor = Hyprland.focusedMonitor
