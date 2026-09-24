@@ -228,6 +228,9 @@ is the check that keeps this paragraph honest.
   glyph is the only exception.
 - **Logic goes in `Model.js`, with a Node test.** Keep QML to drawing and wiring.
 - **A user-visible change updates `docs/usage.md` and the README in the same PR.**
+  *(by hand)* The README holds the key tables; `docs/usage.md` points at them
+  (`docs/usage.md:11`) rather than repeating them, so a key change is a README
+  change plus whatever prose in `docs/usage.md` describes the behaviour.
 
 ## Workflow
 
