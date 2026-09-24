@@ -182,7 +182,7 @@ Item {
             font.pixelSize: Style.font.body
             font.bold: rowSurface.row.up
             elide: Text.ElideRight
-            width: Math.min(implicitWidth, identity.width - kindBadge.width - Style.spacing.md)
+            width: Math.max(0, Math.min(implicitWidth, identity.width - kindBadge.width - Style.spacing.md))
           }
 
           // The kind, as a small badge: the one thing that tells the two

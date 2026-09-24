@@ -664,6 +664,12 @@ FocusScope {
           Text {
             id: keysText
             anchors.right: parent.right
+            // Give way before countsText, which already elides. With assist and
+            // apply both on, the legend was wide enough in a narrow card to
+            // squeeze the counts to zero width, so they vanished rather than
+            // truncating.
+            width: Math.min(implicitWidth, parent.width / 2)
+            elide: Text.ElideRight
             text: MicrovmState.mutating ? "working…"
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText

@@ -280,7 +280,7 @@ FocusScope {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
-        width: Math.min(implicitWidth, formColumn.width - Style.space(120))
+        width: Math.max(0, Math.min(implicitWidth, formColumn.width - Style.space(120)))
       }
     }
 
@@ -382,7 +382,7 @@ FocusScope {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
-                  width: Math.min(implicitWidth, body.width - Style.space(24))
+                  width: Math.max(0, Math.min(implicitWidth, body.width - Style.space(24)))
                 }
               }
 
