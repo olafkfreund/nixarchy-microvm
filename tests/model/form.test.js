@@ -55,6 +55,28 @@ test("the host side of a share rejects . and .. segments (#22)", () => {
   eq(errors({ shares: "/srv/a.b:/mnt/a" }), {})
 })
 
+test("share tags are sanitised into the parser's own class (#22)", () => {
+  const tags = (sn) => [...sn.matchAll(/tag = "([^"]*)"/g)].map(m => m[1])
+
+  const plus = snippet({ shares: "~/c++:/mnt/c++" })
+  eq(tags(plus), ["c--"])
+  ok(plus.indexOf('source = "/home/user/c++"') !== -1, "the source keeps its + characters")
+  eq(Model.parseMachineSnippet(plus).shares, "/home/user/c++:/mnt/c++")
+
+  // 58 leaves room for a "-NN" suffix inside the parser's 64.
+  const long = snippet({ shares: "/a:/mnt/" + "x".repeat(65) })
+  eq(tags(long)[0].length, 58)
+  ok(Model.parseMachineSnippet(long), "and it still reads back")
+
+  const clash = snippet({ shares: "/a:/mnt/c++ /b:/mnt/c--" })
+  eq(tags(clash), ["c--", "c---2"])
+  ok(tags(clash).every(t => t.length <= 64))
+  ok(Model.parseMachineSnippet(clash))
+
+  // A sanitised tag must still dodge the names guest.nix already mounts.
+  eq(tags(snippet({ shares: "/a:/mnt/ro-store" })), ["ro-store-2"])
+})
+
 test("emptyForm: strings and bools only, disposable by default", () => {
   const f = Model.emptyForm()
   eq(f.kind, "disposable")

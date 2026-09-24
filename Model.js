@@ -751,7 +751,10 @@ function shareTags(shares) {
   var used = BUILTIN_TAGS.slice()
   var out = []
   for (var i = 0; i < (shares || []).length; i++) {
-    var base = shares[i].mountPoint.replace(/\/+$/, "").split("/").pop() || "share"
+    // Only what the parser's tag class accepts, and short enough that the
+    // collision suffix below cannot push it past the 64 that class allows.
+    var base = (shares[i].mountPoint.replace(/\/+$/, "").split("/").pop() || "share")
+      .replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 58) || "share"
     var tag = base
     for (var n = 2; used.indexOf(tag) !== -1; n++) tag = base + "-" + n
     used.push(tag)
