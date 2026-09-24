@@ -148,7 +148,6 @@ Singleton {
 
   property var log: []
   property string streamTitle: ""
-  property string streamKey: ""
   property int streamExit: -1
   readonly property bool streaming: streamProcess.running
 
@@ -248,7 +247,7 @@ Singleton {
   function start(row) {
     if (!allowed(row, "start")) return false
     if (row.kind === "permanent") return run([Model.unitArgv("start", row.name)], "starting", row.key)
-    return startStream(Model.runDetachArgv(row.name), "run " + row.name, row.key)
+    return startStream(Model.runDetachArgv(row.name), "run " + row.name)
   }
 
   function stop(row) {
@@ -274,12 +273,11 @@ Singleton {
     return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
   }
 
-  function startStream(argv, title, key) {
+  function startStream(argv, title) {
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argv) return false
     root.lastError = ""
     root.streamTitle = title
-    root.streamKey = key || ""
     root.streamExit = -1
     root.log = ["$ " + title]
     root.launch(streamProcess, argv)
