@@ -24,10 +24,6 @@ Item {
   property bool opened: false
   property var targetScreen: null
 
-  // A full-screen surface is read from further away than a bar popup, so the
-  // whole view is drawn larger: the same factor nixarchy-pkg's menu uses.
-  // Safe here because nothing in the view pops up (no QQC Popup ignores it).
-  readonly property real uiScale: 1.45
   readonly property int viewWidth: Style.space(680)
 
   function focusedScreen() {
@@ -109,9 +105,9 @@ Item {
 
     BorderSurface {
       id: card
-      width: Math.min(Math.round(root.viewWidth * root.uiScale) + card.contentLeftInset + card.contentRightInset,
+      width: Math.min(root.viewWidth + card.contentLeftInset + card.contentRightInset,
                       Math.round(panel.width * 0.9))
-      height: Math.min(Math.round(view.implicitHeight * root.uiScale) + card.contentTopInset + card.contentBottomInset,
+      height: Math.min(view.implicitHeight + card.contentTopInset + card.contentBottomInset,
                        Math.round(panel.height * 0.85))
       anchors.horizontalCenter: parent.horizontalCenter
       y: Math.max(Style.gapsOut, Math.round((panel.height - height) / 3))
@@ -133,12 +129,7 @@ Item {
 
         MicrovmView {
           id: view
-          // Laid out at its natural size, then drawn uiScale times larger;
-          // input is mapped through the same transform, so clicks still land.
-          width: frame.width / root.uiScale
-          height: frame.height / root.uiScale
-          scale: root.uiScale
-          transformOrigin: Item.TopLeft
+          anchors.fill: parent
           foreground: Color.foreground
           fontFamily: Style.font.family
           onCloseRequested: root.close()
