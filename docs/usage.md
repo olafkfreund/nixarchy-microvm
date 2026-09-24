@@ -145,6 +145,14 @@ Both surfaces show the same state. A build started in the menu shows up in the
 popup's log, and while anything changes, a start or delete from the other
 surface is refused. Closing a surface never stops a job.
 
+The list refreshes every few seconds and sorts running machines first, so rows
+move on their own. The cursor is tied to the machine you selected rather than
+to a position in the list: start the VM you are on and the highlight travels
+with it as it jumps to the top, so pressing `s` again stops that same machine
+and not whatever slid into its place. If the selected machine leaves the list —
+you deleted it, or the filter no longer matches it — the cursor stays at that
+position and takes whichever row moves up.
+
 ## Everyday tasks
 
 ### A throwaway shell
@@ -183,7 +191,10 @@ closing that terminal stops the VM.
      daemon nobody can log into; the form warns.
    - **Shares**: `host:guest` pairs, space-separated, such as `~/src:/mnt/src`.
      The guest path must be absolute and cannot be `/`, `/nix` or `/mnt/host`,
-     which the guest already uses.
+     which the guest already uses. Neither side may contain a `.` or `..`
+     segment — write the path you mean in full rather than reaching through a
+     parent. `~/` needs a plain absolute `HOME`; if yours contains anything
+     unusual, spell the host path out instead.
 3. Press Enter. The **review** shows the exact line that will go into
    `~/.config/nixarchy/apps.nix`, the two commands that write it (the
    `microvm` service row, then the line), and a reminder that applying
@@ -208,8 +219,10 @@ hidden and the footer says so.
 
 ### Delete
 
-`x` asks first, and **Cancel** is the default answer. For a disposable VM it
-deletes the VM and everything in its state directory. For a permanent VM it
+`x` asks first, and **Cancel** is the default answer. Answer from the keyboard
+with `y` or `enter` for yes, `n` or `esc` for no — the question takes the
+keyboard wherever you were, including out of the filter box. For a disposable
+VM it deletes the VM and everything in its state directory. For a permanent VM it
 removes the line from `apps.nix`; the unit and `/var/lib/microvms/<name>` stay
 until you apply, and this plugin never deletes that directory.
 
@@ -319,6 +332,14 @@ lists them and what happens without each.
 **"Busy: run demo-python — press o to watch".** Only one change runs at a
 time, across the popup and the menu. The message names the job holding the
 lock. `o` shows its log, and the key works again once the job finishes.
+
+**A change that will not finish.** While something runs, the footer reads
+`working…` and names it. If it is still going after a minute, the footer adds
+`— X gives up` and a button appears beside it. `X` asks the command to stop and
+kills it three seconds later if it ignores that. The lock is released only once
+the command is actually gone, never on a timer — so a write to `apps.nix` can
+never be abandoned while it is still writing. A build you are watching in the
+log is never offered `X`: it is slow, not stuck.
 
 **A running build stopped.** Restarting or reloading the shell ends a stream
 it was running. Start it again.

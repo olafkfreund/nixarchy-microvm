@@ -86,12 +86,21 @@
           default = pkgs.runCommand "nixarchy-microvm-check"
             { nativeBuildInputs = [ pkgs.nodejs pkgs.jq ]; }
             ''
+              # check: tests
               # Model.js carries all the logic, and runs under plain Node.
               cp -r ${./tests} tests
               cp ${./Model.js} Model.js
               cp ${./schema.json} schema.json
+              # The keyboard drift alarm scans the QML for bound keys, so the
+              # sandbox has to hold it. Taken from the built package rather than
+              # listed again, so it cannot fall out of step with the files list.
+              cp ${plugin}/*.qml .
+              # The harness before the tests: a harness that cannot fail makes
+              # every check below it meaningless.
+              node tests/selftest.js
               node tests/run.js
 
+              # check: manifest
               # The manifest is what the shell validates at load: a typo in it
               # is a plugin that silently never appears.
               jq -e '
@@ -102,25 +111,50 @@
                 and .entryPoints.menu == "Menu.qml"
                 and .entryPoints.barWidget == "Panel.qml"
               ' ${plugin}/manifest.json > /dev/null
+              # check: entry-points
               for f in $(jq -r '.entryPoints[]' ${plugin}/manifest.json); do
                 test -f "${plugin}/$f" || { echo "entry point $f missing from the package" >&2; exit 1; }
               done
 
-              # The schema is handed to claude verbatim; a broken one is an
-              # agent that never answers. Strict, and without a $schema key,
-              # which claude's validator refuses.
+              # check: files-list
+              # AGENTS.md makes the files list a rule; nothing enforced it, so a
+              # new runtime file could be imported, forgotten, and still pass
+              # every check while the plugin broke at load. A deny-list rather
+              # than an extension allow-list, so an unrecognised new root file
+              # fails until someone classifies it instead of being ignored.
+              # -type f excludes directories as a class, because pluginFor
+              # flattens each entry to its basename, so nothing under tests/,
+              # docs/, share/ or the artifact directories could ship correctly
+              # even if it were listed.
+              printf '%s\n' .gitignore AGENTS.md CLAUDE.md README.md flake.lock flake.nix \
+                | sort > deny
+              (cd ${self} && find . -maxdepth 1 -type f -printf '%f\n') | sort > root
+              comm -23 root deny > required
+              ls -1 ${plugin} | sort > packaged
+              comm -23 required packaged | sed 's/$/: at the repository root, missing from the files list/' >&2
+              comm -13 required packaged | sed 's/$/: packaged, but not a root file outside the deny-list/' >&2
+              [ -z "$(comm -3 required packaged)" ] || exit 1
+
+              # check: schema
+              # Asserts exactly two things about the schema handed to claude:
+              # additionalProperties is false, and there is no $schema key,
+              # which claude's validator refuses. It is not JSON-Schema
+              # validation -- a malformed properties or required would pass.
               jq -e '.additionalProperties == false and (has("$schema") | not)' ${plugin}/schema.json > /dev/null
 
+              # check: binds
               # The Home Manager module swaps the chord by string replacement,
               # so the shipped file must carry the default one verbatim.
               grep -qF 'o.bind("SUPER + ALT + V", "MicroVMs",' ${plugin}/microvm-binds.lua \
                 || { echo "microvm-binds.lua lost its default bind" >&2; exit 1; }
 
+              # check: singleton
               # Without this line the bar and the menu each get their own
               # state, and "one mutation at a time" silently stops holding.
               grep -qx 'singleton MicrovmState 1.0 MicrovmState.qml' ${plugin}/qmldir \
                 || { echo "qmldir does not declare the MicrovmState singleton" >&2; exit 1; }
 
+              # check: symlinks
               # omarchy-plugin-validate refuses symlinks inside a plugin. Both
               # places count: the package, and the repository itself, which
               # `omarchy plugin add` clones as the plugin folder. A symlink in
@@ -134,22 +168,85 @@
                 echo "symlink in the repository above" >&2; exit 1
               fi
 
+              # check: pacman
               # nixarchy's own plugin validation fails the rebuild on these.
-              if grep -nwE 'pacman|yay' ${plugin}/*.qml ${plugin}/*.js; then
-                echo "Arch package manager reference above" >&2; exit 1
-              fi
+              # omarchy plugin add clones the whole repository as the plugin
+              # folder, so scanning two globs under the built package missed
+              # README.md, docs/, manifest.json, microvm-binds.lua and
+              # share/. The scan is the whole clone now, minus the artifact
+              # directories, which quote the rule to reason about it and grow
+              # without bound -- 34 of the repository's 39 matching lines live
+              # there. Everything else is exempted line by line, so a real
+              # pacman -S in README.md still fails.
+              # flake.nix and the allow-list are excluded for the same
+              # reason: each necessarily contains the pattern it exists to
+              # search for, and listing their lines would mean editing the
+              # allow-list every time the check itself is touched.
+              grep -IrnwE --exclude-dir=intent --exclude-dir=spec --exclude-dir=plan \
+                --exclude=pacman-allowed.txt --exclude=flake.nix \
+                'pacman|yay' ${self} | sed "s|^${self}/||" > hits || true
+              # '##' starts a comment in the allow-list, not '#', because the
+              # lines being exempted are themselves comments in YAML and Nix.
+              grep -v '^##' ${./tests/pacman-allowed.txt} \
+                | grep -v '^[[:space:]]*$' > allowed || true
+              pacman_hit=
+              while IFS= read -r hit; do
+                text=$(printf '%s' "$hit" | cut -d: -f3- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                # -- because an exempted line may begin with a dash, which
+                # grep would otherwise read as an option.
+                grep -qxF -- "$text" allowed || { echo "$hit" >&2; pacman_hit=1; }
+              done < hits
+              [ -z "$pacman_hit" ] || { echo "Arch package manager reference above" >&2; exit 1; }
 
-              # A literal colour survives a theme switch and looks wrong.
-              if grep -nE '"#[0-9a-fA-F]{3,8}"' ${plugin}/*.qml; then
+              # check: colours
+              # A literal colour survives a theme switch and looks wrong. The
+              # old pattern saw only double-quoted hex in *.qml, so a
+              # single-quoted colour, an rgba() string, a bare colour name and
+              # anything in Model.js all went past it.
+              # "transparent" is deliberately allowed: no Color.* token
+              # expresses it, and Menu.qml, VmList.qml:151 and :196 are right as
+              # they are. Qt.rgba derived from a token is not all-literal, so
+              # ShortcutSheet.qml:32 is not flagged.
+              # [[:space:]] rather than \s, so the patterns need no GNU
+              # extension.
+              colour_hit=
+              grep -nE "['\"]#[0-9a-fA-F]{3,8}['\"]" ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              grep -nE "['\"](rgba?|hsla?)\(" ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              grep -nE 'colou?r[[:space:]]*:[[:space:]]*"[a-z]+"' ${plugin}/*.qml ${plugin}/*.js \
+                | grep -vF '"transparent"' && colour_hit=1
+              grep -nE 'Qt\.rgba\([0-9., ]*\)' ${plugin}/*.qml ${plugin}/*.js && colour_hit=1
+              if [ -n "$colour_hit" ]; then
                 echo "hardcoded colour above; use a Color.* token" >&2; exit 1
               fi
 
               # The Pages captures have a budget (docs/img, 8 MB), so the
               # repository stays quick to clone as a plugin folder.
-              if [ -d ${self}/docs/img ]; then
-                size=$(du -sb ${self}/docs/img | cut -f1)
-                [ "$size" -le 8388608 ] || { echo "docs/img is $size bytes, over 8 MB" >&2; exit 1; }
-              fi
+              # check: img-budget
+              # A check asserts its own subject exists. Wrapped in
+              # if [ -d ... ], renaming the directory made the budget silently
+              # stop existing rather than fail.
+              test -d ${self}/docs/img || { echo "docs/img is missing" >&2; exit 1; }
+              size=$(du -sb ${self}/docs/img | cut -f1)
+              [ "$size" -le 8388608 ] || { echo "docs/img is $size bytes, over 8 MB" >&2; exit 1; }
+
+              # check: docs-sync
+              # flake.nix is the source of truth for what nix flake check
+              # enforces. AGENTS.md's Rules section claims each one with a
+              # (checked: <name>) marker, and the two lists must agree, so a
+              # check added without documenting it -- or a rule claiming a
+              # check that no longer exists -- fails here instead of quietly
+              # drifting. The extractor cannot match itself: its own pattern
+              # text is # check: [a-z-]+, and [ is not in [a-z-].
+              # || true on both: grep exits 1 when it matches nothing, which
+              # under set -e would kill the build before the diagnostic below
+              # ever prints.
+              { grep -oE '^[[:space:]]*# check: [a-z-]+' ${self}/flake.nix || true; } \
+                | awk '{print $NF}' | sort -u > names
+              { grep -oE '\(checked: [a-z-]+\)' ${self}/AGENTS.md || true; } \
+                | tr -d '()' | awk '{print $2}' | sort -u > claimed
+              comm -23 names claimed | sed 's/^/check /;s/$/ is not documented in AGENTS.md/' >&2
+              comm -13 names claimed | sed 's/^/(checked: /;s/$/) names no block in flake.nix/' >&2
+              [ -z "$(comm -3 names claimed)" ] || exit 1
 
               touch "$out"
             '';

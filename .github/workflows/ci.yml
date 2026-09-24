@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# Actions are tag-pinned on purpose. There are no secrets in this workflow and
+# no pull_request_target, so with contents: read a repointed tag reaches the
+# runner and nothing else. SHA pins would cost a bump on every renovation to
+# close a hole that is already this narrow.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -14,9 +21,8 @@ jobs:
         with:
           extra_nix_config: "experimental-features = nix-command flakes"
 
-      # The Model tests, the manifest and its entry points, the singleton
-      # declaration, no symlinks, no pacman/yay and no hardcoded colours --
-      # all inside the flake check.
+      # Everything flake.nix enforces; each block there names itself with a
+      # "# check: <name>" line, and AGENTS.md's rules claim those names.
       - run: nix flake check --print-build-logs
 
       # aarch64 is evaluated, not built: there is no aarch64 runner here.
@@ -33,6 +39,9 @@ jobs:
       # captures have a hard budget (plan/2026-09-18-3-pages-showcase.md).
       - name: docs/img stays within 8 MB
         run: |
-          size=$(du -sb docs/img 2>/dev/null | cut -f1)
-          echo "docs/img: ${size:-0} bytes"
-          test "${size:-0}" -le 8388608
+          # No 2>/dev/null and no ${size:-0}: a missing directory used to make
+          # this evaluate 0 -le 8388608 and pass.
+          test -d docs/img
+          size=$(du -sb docs/img | cut -f1)
+          echo "docs/img: $size bytes"
+          test "$size" -le 8388608

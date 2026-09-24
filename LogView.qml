@@ -80,7 +80,7 @@ FocusScope {
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - Style.space(120)
+        width: Math.max(0, parent.width - Style.space(120))
         text: root.title
         textFormat: Text.PlainText
         color: root.foreground

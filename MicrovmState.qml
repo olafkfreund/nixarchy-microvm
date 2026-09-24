@@ -81,23 +81,25 @@ Singleton {
     optReplace: root.optReplace,
     agent: root.agent,
     aiAssist: root.aiAssist,
+    schemaLoaded: root.schemaText !== "",
     serviceQueued: root.pending.service === true,
     servicesRow: root.serviceHeals ? true : root.servicesRow
   })
 
+  // When the last probe ran. Every spawn is guarded: assigning .command to a
+  // Process that is still running has its command silently dropped.
+  property double probedAt: 0
+
   function probe() {
     root.probed = true
-    templatesProcess.command = Model.templatesArgv()
-    templatesProcess.running = true
-    helpProcess.command = Model.helpArgv()
-    helpProcess.running = true
-    agentProbe.command = Model.defaultAgentArgv()
-    agentProbe.running = true
+    root.probedAt = Date.now()
+    if (!templatesProcess.running) { templatesProcess.command = Model.templatesArgv(); templatesProcess.running = true }
+    if (!helpProcess.running) { helpProcess.command = Model.helpArgv(); helpProcess.running = true }
+    if (!agentProbe.running) { agentProbe.command = Model.defaultAgentArgv(); agentProbe.running = true }
     var keys = Model.sshKeysArgv(root.home)
-    if (keys) { keysProcess.command = keys; keysProcess.running = true }
+    if (keys && !keysProcess.running) { keysProcess.command = keys; keysProcess.running = true }
     pkgFile.reload()
-    serviceHelpProbe.command = Model.serviceHelpArgv()
-    serviceHelpProbe.running = true
+    if (!serviceHelpProbe.running) { serviceHelpProbe.command = Model.serviceHelpArgv(); serviceHelpProbe.running = true }
   }
 
   // ---------------------------------------------------------------- data
@@ -124,6 +126,19 @@ Singleton {
 
   property string pendingKey: ""
   property string pendingVerb: ""
+  // The command currently owed an exit, so a failure can name it. Set at every
+  // launch rather than read from queue[0], which holds the remainder after the
+  // slice and so names the culprit's successor.
+  property string pendingCommand: ""
+  // Offered only once a hold owned by a running Process has looked stuck for a
+  // minute. Never set for streamProcess: a build the user can watch in the log
+  // is not stuck, it is slow.
+  property bool escapable: false
+  // A read that failed and kept its last value, rather than pretending the
+  // world changed.
+  property bool unitsStale: false
+  property bool pendingStale: false
+  property bool helpStale: false
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
@@ -147,7 +162,7 @@ Singleton {
   // -------------------------------------------------------------- refresh
 
   function refresh() {
-    if (!root.probed) root.probe()
+    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
     if (!listProcess.running) {
       root.loading = true
       root.polls += 1
@@ -179,7 +194,7 @@ Singleton {
     onTriggered: root.refresh()
   }
 
-  onActiveChanged: if (active) { root.probe(); refresh() }
+  onActiveChanged: if (active) refresh()
   onShowStoppedChanged: if (root.active || root.background) root.refresh()
 
   // -------------------------------------------------------------- actions
@@ -205,6 +220,10 @@ Singleton {
   }
 
   function launch(proc, argv) {
+    root.pendingCommand = Model.commandName(argv)
+    root.escapable = false
+    escapeTimer.stop()
+    if (proc === actionProcess) escapeTimer.restart()
     proc.stdinEnabled = true
     proc.command = argv
     proc.running = true
@@ -283,6 +302,40 @@ Singleton {
     root.log = next
   }
 
+  // A queue with nothing running is a hold no exit will ever release: the
+  // command was launched and never started. Provably inert — there is no child
+  // to collide with — so clearing it cannot produce two mutations at once. If
+  // Quickshell does emit exited on a failed exec, this never arms for 5 s and
+  // the timer is dead code.
+  // The other half of the lock: a hold owned by a running Process. No timer
+  // ever clears it — only the user, and only after the child is dead. abandon()
+  // signals and returns; the existing onExited releases the lock when the kernel
+  // says the process is gone, so a release can never race a live opt set.
+  Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
+  Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
+
+  function abandon() {
+    if (!actionProcess.running) return
+    root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
+    actionProcess.signal(15)
+    killTimer.restart()
+  }
+
+  Timer {
+    id: queueWatchdog
+    interval: 5000
+    running: root.queue.length > 0 && !actionProcess.running && !streamProcess.running
+    onTriggered: {
+      root.queue = []
+      root.lastError = Model.processFailure({
+        verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+        command: root.pendingCommand, reason: "did not start"
+      })
+      root.pendingVerb = ""
+      root.pendingKey = ""
+    }
+  }
+
   // ----------------------------------------------------------- side effects
   //
   // Terminals. None of these is tracked: the terminal owns the process.
@@ -332,10 +385,15 @@ Singleton {
   property string schemaText: ""
 
   function askAgent(prompt) {
-    if (agentProcess.running || !root.agent || !root.schemaText) return false
+    // Every refusal says why. Returning a bare false left the user pressing i
+    // and watching nothing happen, with no message anywhere.
+    if (agentProcess.running) { root.agentError = "the agent is still thinking"; return false }
+    if (!root.agent) { root.agentError = "no agent is configured"; return false }
+    if (!root.schemaText) { root.agentError = "the plugin's schema.json could not be read, so assist is unavailable"; return false }
     if (!Model.isDescribe(prompt) || !Model.trim(prompt)) { root.agentError = "Describe the VM in one line of at most 500 characters"; return false }
     var argv = Model.agentArgv(root.agent, root.schemaText, Model.agentPrompt(prompt, root.templates))
-    if (!argv) return false
+    if (!argv) { root.agentError = "the agent could not be started"; return false }
+    root.agentEnded = ""
     root.agentError = ""
     root.reasoning = ""
     root.agentForm = null
@@ -350,11 +408,31 @@ Singleton {
     return true
   }
 
+  // Why the call ended, as a flag rather than by matching on the message. The
+  // string sentinel only covered cancellation, so a timeout's own message was
+  // overwritten by the generic exit line that followed it.
+  property string agentEnded: ""
+
   function cancelAgent() {
     if (!agentProcess.running) return
     agentTimer.stop()
+    root.agentEnded = "cancelled"
     agentProcess.running = false
     root.agentError = "cancelled"
+  }
+
+  // Ends a call and clears everything it produced. Called when the form is
+  // left or a surface is dismissed — never from reset(), which must not touch
+  // the stream or the log.
+  function resetAgent() {
+    agentTimer.stop()
+    if (agentProcess.running) {
+      root.agentEnded = "closed"
+      agentProcess.running = false
+    }
+    root.reasoning = ""
+    root.agentForm = null
+    root.agentError = ""
   }
 
   Timer {
@@ -362,6 +440,7 @@ Singleton {
     interval: 90000
     onTriggered: {
       if (!agentProcess.running) return
+      root.agentEnded = "timeout"
       agentProcess.running = false
       root.agentError = "the agent took too long (90 s)"
     }
@@ -385,6 +464,9 @@ Singleton {
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
+      stale: Model.staleList({ units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
+      command: root.pendingCommand,
+      pid: actionProcess.processId,
       agentError: root.agentError,
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
@@ -416,13 +498,22 @@ Singleton {
   Process {
     id: unitsProcess
     stdout: StdioCollector { id: unitsOut; waitForEnd: true }
-    onExited: function(code) { root.units = code === 0 ? Model.parseUnits(unitsOut.text) : [] }
+    // A transient systemctl failure used to flip every permanent VM to
+    // not-running for one poll, with no message. Keep the last good read and
+    // say it is stale instead.
+    onExited: function(code) {
+      if (code === 0) { root.units = Model.parseUnits(unitsOut.text); root.unitsStale = false }
+      else root.unitsStale = true
+    }
   }
 
   Process {
     id: pendingProcess
     stdout: StdioCollector { id: pendingOut; waitForEnd: true }
-    onExited: function(code) { root.pending = Model.parsePending(pendingOut.text) }
+    onExited: function(code) {
+      if (code === 0) { root.pending = Model.parsePending(pendingOut.text); root.pendingStale = false }
+      else root.pendingStale = true
+    }
   }
 
   Process {
@@ -434,7 +525,15 @@ Singleton {
   Process {
     id: helpProcess
     stdout: StdioCollector { id: helpOut; waitForEnd: true }
-    onExited: function(code) { root.features = Model.detectFeatures(helpOut.text) }
+    stderr: StdioCollector { id: helpErr; waitForEnd: true }
+    // Some tools print usage on stderr. Reading stdout alone would have made
+    // all three features silently false and removed three keys with no reason
+    // given, indistinguishable from an old nixarchy.
+    onExited: function(code) {
+      var text = Model.trim(helpOut.text + "\n" + helpErr.text)
+      if (text) { root.features = Model.detectFeatures(text); root.helpStale = false }
+      else root.helpStale = true
+    }
   }
 
   Process {
@@ -510,6 +609,9 @@ Singleton {
     path: root.schemaPath
     printErrors: false
     onLoaded: root.schemaText = text()
+    // Without this the schema silently stayed empty and askAgent refused for
+    // ever, with the i key still on offer.
+    onLoadFailed: root.schemaText = ""
   }
 
   Process {
@@ -523,21 +625,30 @@ Singleton {
       var failed = code !== 0 || refused !== ""
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed) {
-        var why = refused || Model.errorText(actionErr.text) || (root.pendingVerb + " failed (exit " + code + ")")
+        var why = Model.processFailure({
+          verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+          command: root.pendingCommand, code: code,
+          stdout: actionOut.text, stderr: actionErr.text, refused: refused
+        })
         // The service row went through but the line did not: say both.
         if (root.pendingVerb === "creating" && root.queue.length === 0 && root.pendingKey.indexOf("permanent:") === 0)
           why = "service queued, machine not written: " + why + " (a service with no machines is inert)"
         root.lastError = why
         root.queue = []
       }
+      root.escapable = false
+      escapeTimer.stop()
+      killTimer.stop()
       if (root.queue.length > 0) {
         // Started on the next tick, not from inside this process's own exit.
         // The queue is only consumed in the same synchronous step that starts
         // the next command, so `mutating` never drops between the two.
         Qt.callLater(function() {
-          var next = root.queue[0]
+          // Launch before slicing, so the two holders of the lock overlap: a
+          // late tick makes the plugin slow, never unsafe. Slicing first would
+          // leave a window with an empty queue and no running Process.
+          root.launch(actionProcess, root.queue[0])
           root.queue = root.queue.slice(1)
-          root.launch(actionProcess, next)
         })
         return
       }
@@ -556,7 +667,7 @@ Singleton {
       root.clearBusyNotice()
       root.streamExit = code
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
-      if (code !== 0) root.lastError = root.streamTitle + " failed (exit " + code + ") — o shows the log"
+      if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
       if (root.active || root.background) root.refresh()
     }
   }
@@ -568,7 +679,7 @@ Singleton {
 
     onExited: function(code) {
       agentTimer.stop()
-      if (root.agentError === "cancelled") return
+      if (root.agentEnded !== "") return
       var failure = Model.agentFailure(agentReplyOut.text, agentReplyErr.text, code)
       if (failure) {
         root.agentError = failure

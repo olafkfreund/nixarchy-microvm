@@ -70,6 +70,11 @@ feature this host does not have) is simply absent, and the footer says why.
 
 ### The list
 
+The cursor follows the machine, not the position. Running VMs sort first, so
+the list reorders under you as things start and stop — the highlight travels
+with the VM you picked. Delete the one you are on and the cursor stays where it
+was, on whichever row moves up into the slot.
+
 | Key | Does |
 | --- | --- |
 | `j` `k` `↑` `↓` | Move the cursor down / up |
@@ -87,8 +92,17 @@ feature this host does not have) is simply absent, and the footer says why.
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
 | `u` | Refresh now |
+| `tab` `shift+tab` | Switch to the next / previous bar panel |
+| `X` | Give up on a change that has been running over a minute |
 | `?` | Show this list |
 | `esc` | Leave the filter, then close the panel |
+
+### A question
+
+| Key | Does |
+| --- | --- |
+| `y` `enter` | Answer yes |
+| `n` `esc` | Answer no (the default) |
 
 `s` on a stopped disposable VM starts it in the background, with its first
 build streamed into the panel. Enter on a running one opens its console in a
@@ -104,7 +118,7 @@ stops the VM.
 | `tab` `↓` / `shift+tab` `↑` | Next / previous field |
 | `↓` on Template or SSH key | Into the list; `enter` picks, `esc` goes back |
 | `space` | Flip a switch or the kind |
-| `j` `k` | Move between switch rows (in a text field they type) |
+| `j` `k` | Move between fields; on a text field they type, so use `tab` |
 | `enter` | Create, or review a permanent VM's line |
 | `enter` on Describe | Ask the agent; `esc` cancels the call |
 | `esc` | Cancel |
@@ -113,7 +127,8 @@ stops the VM.
 
 | Key | Does |
 | --- | --- |
-| `j` `k` | Scroll (stops following) |
+| `j` `k` `↑` `↓` | Scroll (stops following) |
+| `PageUp` `PgDn` | Scroll a screenful |
 | `G` `end` | Jump to the end and follow |
 | `esc` | Back to the list; the job keeps running |
 
@@ -241,7 +256,7 @@ The menu has the same `status` hook:
 
 ```bash
 node tests/run.js                              # Model tests
-nix flake check                                # tests + manifest, schema, singleton, no symlinks, no pacman/yay, no hex colours
+nix flake check                                # everything flake.nix enforces; each block names itself
 nix flake check --all-systems --no-build
 nix build && omarchy plugin validate "$(readlink -f result)"
 ```

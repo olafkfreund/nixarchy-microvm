@@ -55,17 +55,25 @@ FocusScope {
   property bool helpOpen: false
 
   property int cursorIndex: 0
+  // The cursor's identity. cursorIndex is a cache of where this key currently
+  // sits, so a list that re-sorts under the user moves the cursor with the
+  // machine instead of leaving it on a slot (#21).
+  property string cursorKey: ""
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
 
   // ------------------------------------------------------------- derivation
 
   readonly property var rows: Model.filterRows(MicrovmState.rows, filterText)
-  readonly property var cursorRow: cursorIndex >= 0 && cursorIndex < rows.length ? rows[cursorIndex] : null
+  readonly property var cursorRow: Model.rowByKey(rows, cursorKey)
   readonly property var features: MicrovmState.featureState
   readonly property var listActions: Model.listActions(features, MicrovmState.counts)
 
-  onRowsChanged: root.cursorIndex = Model.clampCursor(root.cursorIndex, rows.length)
+  onRowsChanged: {
+    var c = Model.resolveCursor(rows, root.cursorKey, root.cursorIndex)
+    root.cursorKey = c.key
+    root.cursorIndex = c.index
+  }
 
   // ------------------------------------------------------------ lifecycle
 
@@ -76,6 +84,7 @@ FocusScope {
     mode = "list"
     cursorActive = false
     cursorIndex = 0
+    cursorKey = ""
     filterText = ""
     filterField.text = ""
     filterField.focus = false
@@ -87,10 +96,19 @@ FocusScope {
 
   // Deferred, and decided by the mode at the time it runs, so an open that
   // lands straight in the form (IPC create) keeps the form's focus.
+  // Exactly one item holds the keyboard, and which one is a function of state,
+  // never of where focus happened to be. "confirm" and "list" both land on
+  // keyCatcher: the host's ConfirmDialog is a plain Item with no focus property
+  // and no Keys handler, so it cannot hold focus itself. keyCatcher is
+  // focus: true and returns from its own handler while blocked, so the key
+  // bubbles to keyRoot's Keys.onPressed, which feeds confirmDialog.handleKey.
+  // Focusing it is therefore how a question takes the keyboard *away from the
+  // filter*, which is the whole fix.
   function focusForMode() {
-    if (root.mode === "log") logView.forceActiveFocus()
-    else if (root.mode === "form") createForm.focusCurrent()
-    else if (root.mode === "review") review.forceActiveFocus()
+    var target = Model.focusTarget({ mode: root.mode, confirmOpen: root.confirmOpen })
+    if (target === "log") logView.forceActiveFocus()
+    else if (target === "form") createForm.focusCurrent()
+    else if (target === "review") review.forceActiveFocus()
     else keyCatcher.forceActiveFocus()
   }
 
@@ -98,8 +116,10 @@ FocusScope {
   function openForm(kind) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    // The form binds agentError; clearing it there would break the binding
+    // (#7). #23 owns the agent's lifecycle, so this goes through its API
+    // rather than writing the property directly.
+    MicrovmState.resetAgent()
     createForm.start(kind || "disposable")
   }
 
@@ -108,8 +128,7 @@ FocusScope {
   function openEdit(row) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    MicrovmState.resetAgent()
     createForm.startEdit(row)
   }
 
@@ -123,9 +142,13 @@ FocusScope {
     setMode("review")
   }
 
+  // A refused submit changes nothing. It used to clear reviewForm and go back
+  // to the list regardless, so filling out a permanent VM while a build ran
+  // threw every field away and showed a busy notice instead. The footer already
+  // says why, in both the form and the review.
   function submitForm(form) {
+    if (!MicrovmState.submit(form)) return
     root.reviewForm = null
-    MicrovmState.submit(form)
     setMode("list")
   }
 
@@ -137,6 +160,9 @@ FocusScope {
   }
 
   function setMode(next) {
+    // Read the old mode before assigning: leaving the form ends any call it
+    // started, so a reply cannot land against a form that is gone.
+    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent()
     root.mode = next
     root.helpOpen = false
     Qt.callLater(root.focusForMode)
@@ -146,6 +172,10 @@ FocusScope {
   function dismiss() {
     helpOpen = false
     closeConfirm()
+    // A call left running when the surface closes kept claude alive for up to
+    // 90 s and made the next i a silent no-op. The stream and the log are
+    // deliberately untouched.
+    MicrovmState.resetAgent()
   }
 
   // --------------------------------------------------------------- actions
@@ -187,6 +217,7 @@ FocusScope {
     // ConfirmDialog would otherwise default to its confirm button.
     confirmDialog.selectedIndex = 0
     root.confirmOpen = true
+    Qt.callLater(root.focusForMode)
   }
 
   function askRemove(row) {
@@ -202,6 +233,7 @@ FocusScope {
   function closeConfirm() {
     root.confirmOpen = false
     root.confirmAction = null
+    Qt.callLater(root.focusForMode)
   }
 
   function confirmAccepted() {
@@ -225,12 +257,22 @@ FocusScope {
     cursorActive = true
     cursorFromKeyboard = true
     cursorIndex = next.index
+    cursorKey = next.index >= 0 && next.index < rows.length ? rows[next.index].key : ""
   }
 
-  function setCursor(index) {
-    cursorActive = true
-    cursorFromKeyboard = false
-    cursorIndex = Model.clampCursor(index, rows.length)
+  // A key the list no longer holds is a no-op: hover can fire from a delegate
+  // the poll has already moved or removed, and losing the user's selection to a
+  // stale pointer event is the bug this issue fixes, wearing a different hat.
+  function setCursor(key) {
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].key === key) {
+        cursorActive = true
+        cursorFromKeyboard = false
+        cursorKey = key
+        cursorIndex = i
+        return
+      }
+    }
   }
 
   function handleTextKey(key) {
@@ -242,6 +284,9 @@ FocusScope {
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
     if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
+    // Above the row keys so it can never be read as a lower-case x, which
+    // deletes. Capital X only, and only while the offer stands.
+    if (key === "X") { if (MicrovmState.escapable && !MicrovmState.streaming) MicrovmState.abandon(); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -267,6 +312,11 @@ FocusScope {
 
     Keys.onPressed: function(event) {
       if (!root.confirmOpen) return
+      // ConfirmDialog.handleKey knows Escape, Left/Right/Tab/Backtab and
+      // Return/Enter, and nothing else -- there is no y and no n anywhere in
+      // it. The keys the docs promise have to be answered here.
+      if (event.text === "y") { root.confirmAccepted(); event.accepted = true; return }
+      if (event.text === "n") { root.closeConfirm(); event.accepted = true; return }
       if (confirmDialog.handleKey(event)) event.accepted = true
     }
 
@@ -369,6 +419,7 @@ FocusScope {
           onTextChanged: {
             root.filterText = text
             root.cursorIndex = 0
+            root.cursorKey = ""
           }
           Keys.onEscapePressed: {
             if (text.length > 0) text = ""
@@ -422,8 +473,12 @@ FocusScope {
               createForm.setForm(got.form)
               createForm.reasoning = got.reasoning
               if (got.rejected.length > 0) MicrovmState.agentError = "ignored (wrong type): " + got.rejected.join(", ")
+              // begin() re-establishes the form's own state and defers
+              // focusCurrent itself. It clears attempted, so that is set back
+              // afterwards: the agent's proposal should show its errors
+              // immediately rather than waiting for the user to touch a field.
+              createForm.begin()
               createForm.attempted = true
-              Qt.callLater(createForm.focusCurrent)
             }
           }
         }
@@ -473,12 +528,15 @@ FocusScope {
             Text {
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
-                : "Runs: " + root.reviewArgvs.map(function(a) { return a.slice(0, 4).map(function(x) { return x.indexOf("/") === 0 ? "nixarchy-pkg" : x }).join(" ") }).join(", then ")
+                : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet,
+                    root.reviewForm ? Model.optPath(root.reviewForm.name) : "").join("\n")
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
+              // A command is one unbroken string; wrapping it anywhere is
+              // better than hiding its tail, which is what truncation did.
+              wrapMode: Text.WrapAnywhere
             }
 
             Text {
@@ -530,7 +588,7 @@ FocusScope {
           fontFamily: root.fontFamily
 
           onActionRequested: function(key, verb) { root.dispatch(key, verb) }
-          onCursorRequested: function(index) { root.setCursor(index) }
+          onCursorRequested: function(key) { root.setCursor(key) }
         }
 
         Column {
@@ -661,10 +719,35 @@ FocusScope {
             font.pixelSize: Style.font.caption
           }
 
+          // The mouse's way to the same escape the X key offers. Appears only
+          // with the offer, so the footer is unchanged until something looks
+          // stuck.
+          PanelActionButton {
+            id: abandonButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: MicrovmState.escapable && !MicrovmState.streaming
+            iconText: Model.Glyph.stop
+            tooltipText: "Give up on " + MicrovmState.pendingVerb + "  (X)"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: MicrovmState.abandon()
+          }
+
           Text {
             id: keysText
-            anchors.right: parent.right
-            text: MicrovmState.mutating ? "working…"
+            anchors.right: abandonButton.visible ? abandonButton.left : parent.right
+            anchors.rightMargin: abandonButton.visible ? Style.spacing.sm : 0
+            // Give way before countsText, which already elides. With assist and
+            // apply both on, the legend was wide enough in a narrow card to
+            // squeeze the counts to zero width, so they vanished rather than
+            // truncating.
+            width: Math.min(implicitWidth, parent.width / 2)
+            elide: Text.ElideRight
+            text: MicrovmState.mutating
+              ? Model.workingText({ verb: MicrovmState.pendingVerb,
+                                    key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",
+                                    escapable: MicrovmState.escapable && !MicrovmState.streaming })
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText
             color: root.foreground

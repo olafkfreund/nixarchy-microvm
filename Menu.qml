@@ -72,6 +72,11 @@ Item {
     root.opened = false
   }
 
+  // Panel.qml:43-46's shape. A no-op when the host did call close(); when it
+  // did not, it stops a leaked hold keeping the 3 s poll alive with every
+  // surface shut.
+  Component.onDestruction: if (root.opened) MicrovmState.release("view")
+
   function toggle() {
     if (root.opened) root.close()
     else root.open("{}")

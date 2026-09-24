@@ -29,7 +29,7 @@ Item {
   readonly property int count: rowModel.count
 
   signal actionRequested(string key, string verb)
-  signal cursorRequested(int index)
+  signal cursorRequested(string key)
 
   // contentHeight, not the assigned height: the natural size must not be
   // derived from the size it is given, or the graph closes on itself.
@@ -119,7 +119,7 @@ Item {
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton
       cursorShape: rowSurface.enterVerb ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse) root.cursorRequested(rowSurface.rowIndex)
+      onContainsMouseChanged: if (containsMouse) root.cursorRequested(rowSurface.row.key)
       onClicked: if (rowSurface.enterVerb) root.actionRequested(rowSurface.row.key, rowSurface.enterVerb)
     }
 
@@ -181,7 +181,7 @@ Item {
             font.pixelSize: Style.font.body
             font.bold: rowSurface.row.up
             elide: Text.ElideRight
-            width: Math.min(implicitWidth, identity.width - kindBadge.width - Style.spacing.md)
+            width: Math.max(0, Math.min(implicitWidth, identity.width - kindBadge.width - Style.spacing.md))
           }
 
           // The kind, as a small badge: the one thing that tells the two
