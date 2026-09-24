@@ -181,6 +181,31 @@ and a worked diff for the sibling issues to link. If the shape proves out, its
 real home is a `fittedContentHeight`-style budget helper in `qs.Ui`, which belongs
 in `docs/upstream.md` as an upstream ask, not in five plugins.
 
+### 5a. Coordination with #25
+
+#25 (`spec/2026-09-24-25-view-and-form.md`, drafted in parallel with this one)
+ships `Math.max(0, …)` guards at `VmList.qml:185`, `CreateForm.qml:266`,
+`CreateForm.qml:368`, `LogView.qml:342` and `LogView.qml:76`, and assigns the
+structural rework to this issue under a written invariant:
+
+> No width expression in either surface may evaluate below zero at a 456 px card.
+
+This spec adopts that invariant. It holds here in the stronger form that the
+rework must make a negative width unreachable rather than clamped: once
+`identity` is sized from a budget rather than from
+`Math.min(implicitWidth, parent − constant)`, the subtraction that can go
+negative is gone, and #25's guards become redundant tokens on lines this issue
+rewrites. Removing them along with the arithmetic is correct; removing them
+without replacing the arithmetic is not.
+
+Note for the plan: #25's spec describes this issue as being at approved-intent
+with "no spec, no plan". That was true when #25 was written and is not now —
+both specs were drafted in the same pass. The sequencing claim in #25 §4 should
+be read as the invariant hand-off, which stands, not as a statement of this
+issue's state. Whichever of the two lands first, the other rebases; the guards
+and the rework are compatible in either order, and the invariant is what keeps
+them so.
+
 ### 6. Docs
 
 - `AGENTS.md:45` — "It scales the view 1.45×" becomes "It sizes its card from the
