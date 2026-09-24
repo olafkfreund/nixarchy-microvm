@@ -53,6 +53,7 @@ var SHORTCUTS = [
   { group: "Panel", keys: "u", text: "Refresh now" },
   { group: "Panel", keys: "tab", text: "Switch to the next bar panel" },
   { group: "Panel", keys: "shift+tab", text: "Switch to the previous bar panel" },
+  { group: "Panel", keys: "X", text: "Give up on a change stuck over a minute" },
   { group: "Panel", keys: "?", text: "Show this list" },
   // Two entries, not one: form.test.js caps a key label at 12 characters, and
   // "y  n  enter  esc" is 16.
@@ -292,7 +293,7 @@ function parseUnits(raw) {
 function parseMachineLines(text) {
   var out = []
   var lines = String(text || "").split("\n")
-  var seen = {}
+  var seen = Object.create(null)
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i]
     var marker = line.match(/#@opt\s+programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*$/)
@@ -373,7 +374,7 @@ function disposableRows(vms) {
 // nixarchy has not built yet (runtime "none"); a unit with no line was
 // declared somewhere this plugin cannot edit (ownership "flake").
 function permanentRows(units, machines, pending) {
-  var byName = {}
+  var byName = Object.create(null)
   var order = []
   var list = machines || []
   for (var m = 0; m < list.length; m++) {
@@ -524,7 +525,7 @@ function reviewCommandLines(argvs, snippet, optPath) {
     var parts = []
     for (var j = 0; j < argv.length; j++) {
       var token = String(argv[j])
-      if (j === 0 && token.charAt(0) === "/") parts.push("nixarchy-pkg")
+      if (j === 0) parts.push(commandName(argv))
       else if (snippet && token === snippet) parts.push("\u2039the line above\u203a")
       else parts.push(token)
     }
@@ -545,6 +546,23 @@ function clampCursor(cursorIndex, total) {
   if (cursorIndex < 0) return 0
   if (cursorIndex > total - 1) return total - 1
   return cursorIndex
+}
+
+// The cursor's identity, reconciled against a list that re-sorts under it.
+// The key is what an action applies to; the index is a cache for drawing, so a
+// stale index can misdraw a highlight for a frame but can never act on the
+// wrong machine. A key that has left the list falls back to its old position,
+// clamped: the row that slid into the slot takes the cursor.
+function resolveCursor(rows, key, index) {
+  var list = rows || []
+  if (list.length === 0) return { key: "", index: 0 }
+  if (key) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].key === key) return { key: key, index: i }
+    }
+  }
+  var at = clampCursor(index, list.length)
+  return { key: list[at].key, index: at }
 }
 
 // Where ↓/↑ (delta ±1) or the filter's ↓ (delta 0) put the cursor. With no
@@ -710,10 +728,38 @@ function isPath(value) {
   return /^(\/|~\/)[A-Za-z0-9_.\/+-]*$/.test(String(value || "")) && String(value).length <= 4096
 }
 
+// HOME is spliced into a share source after isPath has judged the raw ~/ token,
+// so it is the one string reaching nixString that no field allowlist covers.
+// It must be a plain absolute path: no quote, no backslash, no ${, no . or ..
+function isHostHome(value) {
+  var text = String(value || "")
+  if (!/^\/[A-Za-z0-9_.\/+-]*$/.test(text) || text.length > 4096) return false
+  var parts = text.split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "." || parts[i] === "..") return false
+  }
+  return true
+}
+
+// The host side of a share, judged like any path but with no . or .. segment,
+// so a share cannot silently resolve outside the directory the user named.
+function isHostPath(value) {
+  if (!isPath(value)) return false
+  var parts = String(value).split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "." || parts[i] === "..") return false
+  }
+  return true
+}
+
+// Null when the path needs HOME and HOME cannot be written into Nix. An
+// absolute path never needs it, so a pathological HOME blocks only the shares
+// that actually use ~/.
 function expandHome(path, hostHome) {
   var text = String(path || "")
   var host = trim(hostHome).replace(/\/+$/, "")
-  return text.indexOf("~/") === 0 && host ? host + text.substring(1) : text
+  if (text.indexOf("~/") !== 0) return text
+  return isHostHome(host) ? host + text.substring(1) : null
 }
 
 // The guest side of a share, normalised before it is judged: "/mnt//src/"
@@ -752,11 +798,13 @@ function parseShares(value, hostHome) {
   for (var i = 0; i < list.length; i++) {
     var parts = list[i].split(":")
     if (parts.length !== 2) return { error: "Each share is host:guest" }
-    if (!isPath(parts[0])) return { error: "Host paths are absolute or ~/…, using " + PATH_CHARS }
+    if (!isHostPath(parts[0])) return { error: "Host paths are absolute or ~/…, using " + PATH_CHARS + ", with no . or .. segments" }
     var guest = normalizeGuestPath(parts[1])
     if (!guest) return { error: "Guest paths are absolute, with no . or .. segments" }
     if (isReservedGuest(guest)) return { error: guest + " is already used inside the guest" }
-    out.push({ source: expandHome(parts[0], hostHome), mountPoint: guest })
+    var source = expandHome(parts[0], hostHome)
+    if (source === null) return { error: "HOME is not a plain absolute path, so ~/ cannot be expanded; write the path in full" }
+    out.push({ source: source, mountPoint: guest })
   }
   return { shares: out }
 }
@@ -767,7 +815,10 @@ function shareTags(shares) {
   var used = BUILTIN_TAGS.slice()
   var out = []
   for (var i = 0; i < (shares || []).length; i++) {
-    var base = shares[i].mountPoint.replace(/\/+$/, "").split("/").pop() || "share"
+    // Only what the parser's tag class accepts, and short enough that the
+    // collision suffix below cannot push it past the 64 that class allows.
+    var base = (shares[i].mountPoint.replace(/\/+$/, "").split("/").pop() || "share")
+      .replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 58) || "share"
     var tag = base
     for (var n = 2; used.indexOf(tag) !== -1; n++) tag = base + "-" + n
     used.push(tag)
@@ -884,11 +935,31 @@ function validateForm(form, rows, templates, hostHome) {
 //
 // The one line this plugin writes for a permanent VM, and the only Nix it
 // ever emits. Every field is written, defaults included, so the line reads
-// back into the form without knowing the module's defaults. Only validated
-// values reach it, and every string in it is drawn from a set with no " \
-// or ${, so it needs no escaping. parseMachineSnippet reads exactly this
-// and nothing else: a line changed by hand is recognised as not ours
-// rather than rewritten.
+// back into the form without knowing the module's defaults.
+//
+// Nothing is escaped. That is safe because every string is checked against
+// nixSafe immediately before it is written and the line is refused otherwise,
+// not because the values happen to be clean: an earlier version of this
+// comment claimed the latter and was wrong, since HOME was spliced into a
+// share source after isPath had judged the raw ~/ token. The field allowlists
+// -- isTemplateName, isHostPath, normalizeGuestPath, isHostHome, the tag
+// sanitiser and SSH_KEY -- are why that check never fires for a form a user
+// could submit.
+//
+// parseMachineSnippet deliberately accepts a superset of this: a wider tag, a
+// .. in a host path. That keeps a line an earlier version wrote editable
+// instead of disowning it. It is a judgement about syntax, not a claim that
+// the line came from this emitter -- and a line changed by hand outside the
+// grammar is still recognised as not ours rather than rewritten.
+
+// What the emitter is allowed to write inside "…". Nix interprets " \ and ${,
+// and nixString escapes nothing, so every string is checked here first and the
+// line refused if the check fails. It is an assertion, not a filter: the field
+// allowlists are what make it unreachable.
+function nixSafe(value) {
+  var text = String(value === undefined || value === null ? "" : value)
+  return !/["\\]/.test(text) && text.indexOf("${") === -1 && !hasControlChars(text)
+}
 
 function nixString(value) {
   return '"' + value + '"'
@@ -914,6 +985,14 @@ function machineSnippet(form, rows, templates, hostHome) {
   parts.push("shares = [ " + (list.length ? list.join(" ") + " " : "") + "];")
   var key = normalizeSshKey(f.sshKey)
   if (key) parts.push("modules = [ { users.users.dev.openssh.authorizedKeys.keys = [ " + nixString(key) + " ]; } ];")
+  // Every string this line carries, checked before it is written. The field
+  // allowlists above are what make this unreachable; it is here so that a
+  // future field cannot quietly reintroduce the hole HOME opened.
+  var written = [trim(f.template), key]
+  for (var t = 0; t < shares.length; t++) written.push(shares[t].source, shares[t].mountPoint, tags[t])
+  for (var w = 0; w < written.length; w++) {
+    if (!nixSafe(written[w])) return null
+  }
   return "{ " + parts.join(" ") + " }"
 }
 
@@ -938,7 +1017,11 @@ function parseMachineSnippet(text) {
   while ((s = SHARE_RE.exec(m[6])) !== null) {
     var guest = normalizeGuestPath(s[2])
     if (!isPath(s[1]) || s[1].charAt(0) !== "/" || !guest || guest !== s[2] || isReservedGuest(guest)) return null
-    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(s[3]) || BUILTIN_TAGS.indexOf(s[3]) !== -1) return null
+    // Wider than the emitter's own class on purpose: a line an earlier version
+    // wrote with a "+" or an over-long tag must stay readable, so it stays
+    // editable. Tags are discarded on read and re-derived on write, so this is
+    // syntactic safety, not a claim the line came from this emitter.
+    if (!/^[A-Za-z0-9_.+-]{1,4096}$/.test(s[3]) || BUILTIN_TAGS.indexOf(s[3]) !== -1) return null
     shares.push({ source: s[1], mountPoint: guest })
     pairs.push(s[1] + ":" + guest)
   }
@@ -1280,7 +1363,9 @@ function listActions(state, c) {
   var counts = c || {}
   return {
     create: true,
-    assist: !!s.agent && s.aiAssist !== false,
+    // schemaLoaded false means schema.json could not be read, so the reply
+    // could never be validated: offering i would be offering a dead key.
+    assist: !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
     apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
   }
 }
@@ -1438,6 +1523,7 @@ function applyAgentReply(reply, form) {
   var rejected = []
   var r = reply && typeof reply === "object" ? reply : {}
   for (var key in r) {
+    if (!Object.prototype.hasOwnProperty.call(AGENT_FIELDS, key)) continue
     var type = AGENT_FIELDS[key]
     var v = r[key]
     if (!type) continue
@@ -1499,6 +1585,66 @@ function parseSshKeys(raw) {
 // the file changed. The error text, or "" when it went through (or when the
 // output is not one of its objects at all, so a plain writer's exit code
 // still decides).
+// ---------------------------------------------------------------- failure
+//
+// One place that turns a finished Process into a line for the user, so a
+// failure cannot reach them as silence or as the wrong reason.
+
+// The command a user would recognise. nixarchy.pkg's adapter is not on PATH
+// and is invoked by its full store path, so it is named for what it is.
+function commandName(argv) {
+  var list = argv || []
+  if (!list.length) return ""
+  var first = String(list[0] || "")
+  if (!first) return ""
+  if (/\/nixarchy\.pkg\/bin\/nixarchy-pkg$/.test(first)) return "nixarchy-pkg"
+  return first.split("/").pop()
+}
+
+// Why a command failed, in one line. A writer's own refusal wins over the exit
+// code, because it says what the user did; reason is for a command that never
+// ran at all, where there is no output to read.
+function processFailure(info) {
+  var f = info || {}
+  var verb = trim(f.verb) || "the command"
+  var subject = trim(f.key) ? verb + " " + trim(f.key) : verb
+  if (trim(f.reason)) return subject + ": " + (trim(f.command) || "the command") + " " + trim(f.reason)
+  var refused = trim(f.refused) || writerError(f.stdout)
+  if (refused) return refused
+  var text = errorText(f.stderr) || errorText(f.stdout)
+  if (text) return text
+  return subject + " failed (exit " + (f.code === undefined || f.code === null ? "?" : f.code) + ")"
+}
+
+// Feature detection is re-run on a schedule, not on every open: probing on
+// each open re-spawned five processes a toggle, and Quickshell drops a command
+// assigned to a Process that is still running.
+function probeStale(now, probedAt) {
+  if (!probedAt) return true
+  return (now - probedAt) >= 600000
+}
+
+// Which reads are showing a value older than the last poll. Fixed order so the
+// line is stable, empty when everything is current.
+function staleList(flags) {
+  var f = flags || {}
+  var out = []
+  if (f.units) out.push("units")
+  if (f.pending) out.push("pending")
+  if (f.help) out.push("help")
+  return out
+}
+
+// The footer while a mutation runs. The escape is only ever offered for a hold
+// the user can safely end, and only once it has run long enough to look stuck.
+function workingText(info) {
+  var f = info || {}
+  var verb = trim(f.verb)
+  if (!verb) return "working…"
+  var text = "working… " + verb + (trim(f.key) ? " " + trim(f.key) : "")
+  return f.escapable ? text + " — X gives up" : text
+}
+
 function writerError(stdout) {
   var obj = parseObject(trim(stdout))
   if (!obj || obj.ok !== false) return ""
