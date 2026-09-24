@@ -109,3 +109,27 @@ test("writerError reads nixarchy-pkg's {ok:false,error} and nothing else", () =>
   eq(Model.writerError("enabled microvm in services.nix (1 queued)\n"), "")
   eq(Model.writerError(""), "")
 })
+
+test("a line an earlier version wrote reads back as managed (#22)", () => {
+  const PATH = "programs.nixarchy.services.microvm.machines."
+  const line = (name, tag) => "  " + PATH + name + " = { template = \"shell\"; autostart = false; " +
+    "memory = 1024; cores = 1; sshPort = null; shares = [ { source = \"/home/user/x\"; " +
+    "mountPoint = \"/mnt/x\"; tag = \"" + tag + "\"; } ]; };  #@opt " + PATH + name
+  const at = (nix, name) => Model.parseMachineLines(nix).filter(m => m.name === name)[0]
+
+  // Tags this emitter can no longer produce, but an earlier one did.
+  eq(at(line("a", "c++"), "a").ownership, "managed")
+  ok(at(line("a", "c++"), "a").fields, "and its fields are usable")
+  eq(at(line("b", "x".repeat(100)), "b").ownership, "managed")
+
+  // A .. on the host side stays readable too: the line still means what it
+  // meant, and only a save of it is refused.
+  const dots = "  " + PATH + "c = { template = \"shell\"; autostart = false; memory = 1024; " +
+    "cores = 1; sshPort = null; shares = [ { source = \"/home/user/../etc\"; " +
+    "mountPoint = \"/mnt/x\"; tag = \"x\"; } ]; };  #@opt " + PATH + "c"
+  eq(at(dots, "c").ownership, "managed")
+
+  // Still refused: a builtin tag, and a tag carrying a quote.
+  eq(at(line("d", "ro-store"), "d").ownership, "managed-unsupported")
+  eq(at(line("e", 'a\\"b'), "e").ownership, "managed-unsupported")
+})

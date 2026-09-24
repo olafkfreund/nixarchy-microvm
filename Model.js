@@ -925,7 +925,11 @@ function parseMachineSnippet(text) {
   while ((s = SHARE_RE.exec(m[6])) !== null) {
     var guest = normalizeGuestPath(s[2])
     if (!isPath(s[1]) || s[1].charAt(0) !== "/" || !guest || guest !== s[2] || isReservedGuest(guest)) return null
-    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(s[3]) || BUILTIN_TAGS.indexOf(s[3]) !== -1) return null
+    // Wider than the emitter's own class on purpose: a line an earlier version
+    // wrote with a "+" or an over-long tag must stay readable, so it stays
+    // editable. Tags are discarded on read and re-derived on write, so this is
+    // syntactic safety, not a claim the line came from this emitter.
+    if (!/^[A-Za-z0-9_.+-]{1,4096}$/.test(s[3]) || BUILTIN_TAGS.indexOf(s[3]) !== -1) return null
     shares.push({ source: s[1], mountPoint: guest })
     pairs.push(s[1] + ":" + guest)
   }
