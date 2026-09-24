@@ -221,10 +221,19 @@ FocusScope {
     cursorKey = next.index >= 0 && next.index < rows.length ? rows[next.index].key : ""
   }
 
-  function setCursor(index) {
-    cursorActive = true
-    cursorFromKeyboard = false
-    cursorIndex = Model.clampCursor(index, rows.length)
+  // A key the list no longer holds is a no-op: hover can fire from a delegate
+  // the poll has already moved or removed, and losing the user's selection to a
+  // stale pointer event is the bug this issue fixes, wearing a different hat.
+  function setCursor(key) {
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].key === key) {
+        cursorActive = true
+        cursorFromKeyboard = false
+        cursorKey = key
+        cursorIndex = i
+        return
+      }
+    }
   }
 
   function handleTextKey(key) {
@@ -519,7 +528,7 @@ FocusScope {
           fontFamily: root.fontFamily
 
           onActionRequested: function(key, verb) { root.dispatch(key, verb) }
-          onCursorRequested: function(index) { root.setCursor(index) }
+          onCursorRequested: function(key) { root.setCursor(key) }
         }
 
         Column {
