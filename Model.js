@@ -148,6 +148,21 @@ function capLine(line) {
   return text.length > LINE_CAP ? text.substring(0, LINE_CAP - 1) + "…" : text
 }
 
+var LOG_CAP = 400
+
+// The log's whole growth rule in one place: clean each incoming line, append,
+// keep the last LOG_CAP. `existing` arrives as a Qt sequence wrapper, so it is
+// walked by index -- never concat, never Array.isArray (AGENTS.md). Pure: it
+// returns a new plain array and never touches root.log.
+function capLog(existing, incoming) {
+  var out = []
+  var have = existing || []
+  for (var i = 0; i < have.length; i++) out.push(have[i])
+  var add = incoming || []
+  for (var j = 0; j < add.length; j++) out.push(capLine(stripAnsi(add[j])))
+  return out.length > LOG_CAP ? out.slice(out.length - LOG_CAP) : out
+}
+
 // ---------------------------------------------------------------- identifiers
 
 var KINDS = ["disposable", "permanent"]

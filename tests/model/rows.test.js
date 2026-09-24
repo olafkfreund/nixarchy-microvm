@@ -216,3 +216,23 @@ test("listActions hides assist when the schema could not be read (#23)", () => {
   ok(Model.listActions(base, {}).assist)
   ok(!Model.listActions({ agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
 })
+
+test("capLog merges, caps each line and keeps the last 400 (#39)", () => {
+  // The whole growth rule, in the one place that owns it.
+  eq(Model.capLog([], ["a"]), ["a"])
+  eq(Model.capLog(["x"], ["a", "b"]), ["x", "a", "b"])
+  eq(Model.capLog(["a"], []), ["a"])
+  eq(Model.capLog(null, null), [])
+
+  // Crossing the cap keeps exactly 400 and drops from the front.
+  const existing = Array.from({ length: 399 }, (_, i) => "e" + i)
+  const capped = Model.capLog(existing, ["n1", "n2", "n3"])
+  eq(capped.length, 400)
+  eq(capped[0], "e2")
+  eq(capped[399], "n3")
+
+  // Incoming lines are cleaned; existing ones are already clean and are not
+  // re-processed.
+  ok(Model.capLog([], ["\u001b[31mred\u001b[0m"])[0] === "red")
+  eq(Model.capLog([], ["x".repeat(3000)])[0].length, 2048)
+})

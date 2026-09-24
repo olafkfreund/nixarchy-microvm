@@ -280,15 +280,32 @@ Singleton {
     root.streamTitle = title
     root.streamExit = -1
     root.log = ["$ " + title]
+    root.pendingLines = []
     root.launch(streamProcess, argv)
     return true
   }
 
+  // A nix build emits thousands of lines. Appending each one reassigned a var
+  // property and copied the whole capped array, so every line cost a full
+  // LogView model invalidation. Buffer the raw lines and merge once per tick.
+  property var pendingLines: []
+
   function appendLog(line) {
-    var next = root.log.slice()
-    next.push(Model.capLine(Model.stripAnsi(line)))
-    if (next.length > 400) next.splice(0, next.length - 400)
-    root.log = next
+    root.pendingLines.push(line)
+    Qt.callLater(root.flushLog)
+  }
+
+  // Qt.callLater defers past the current script execution, so a scheduled flush
+  // can never run *between* two synchronous emissions from one C++ call.
+  // Process::onFinished emits streamEnded (hence onRead, hence appendLog, hence
+  // only a scheduled flush) and then exited, both inside itself -- so when
+  // onExited runs, the tail line is still buffered and its direct flushLog()
+  // drains the tail and the marker in order. The scheduled call fires later and
+  // returns early.
+  function flushLog() {
+    if (root.pendingLines.length === 0) return
+    root.log = Model.capLog(root.log, root.pendingLines)
+    root.pendingLines = []
   }
 
   // A queue with nothing running is a hold no exit will ever release: the
@@ -661,6 +678,7 @@ Singleton {
       root.clearBusyNotice()
       root.streamExit = code
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
+      root.flushLog()
       if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
       if (root.active || root.background) root.refresh()
     }
