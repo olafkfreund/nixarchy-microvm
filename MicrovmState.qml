@@ -660,6 +660,11 @@ Singleton {
 
   Process {
     id: streamProcess
+    // The tail of a build that died mid-line is not lost: Process::onFinished
+    // calls streamEnded() on both parsers before it emits exited
+    // (quickshell src/io/process.cpp:274-282), and SplitParser::streamEnded
+    // emits any non-empty buffer (src/io/datastream.cpp:97-99). So the fragment
+    // arrives here, and only then does onExited append the marker.
     stdout: SplitParser { onRead: function(line) { root.appendLog(line) } }
     stderr: SplitParser { onRead: function(line) { root.appendLog(line) } }
 
