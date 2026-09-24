@@ -664,6 +664,30 @@ function isPath(value) {
   return /^(\/|~\/)[A-Za-z0-9_.\/+-]*$/.test(String(value || "")) && String(value).length <= 4096
 }
 
+// HOME is spliced into a share source after isPath has judged the raw ~/ token,
+// so it is the one string reaching nixString that no field allowlist covers.
+// It must be a plain absolute path: no quote, no backslash, no ${, no . or ..
+function isHostHome(value) {
+  var text = String(value || "")
+  if (!/^\/[A-Za-z0-9_.\/+-]*$/.test(text) || text.length > 4096) return false
+  var parts = text.split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "." || parts[i] === "..") return false
+  }
+  return true
+}
+
+// The host side of a share, judged like any path but with no . or .. segment,
+// so a share cannot silently resolve outside the directory the user named.
+function isHostPath(value) {
+  if (!isPath(value)) return false
+  var parts = String(value).split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "." || parts[i] === "..") return false
+  }
+  return true
+}
+
 function expandHome(path, hostHome) {
   var text = String(path || "")
   var host = trim(hostHome).replace(/\/+$/, "")
@@ -843,6 +867,15 @@ function validateForm(form, rows, templates, hostHome) {
 // or ${, so it needs no escaping. parseMachineSnippet reads exactly this
 // and nothing else: a line changed by hand is recognised as not ours
 // rather than rewritten.
+
+// What the emitter is allowed to write inside "…". Nix interprets " \ and ${,
+// and nixString escapes nothing, so every string is checked here first and the
+// line refused if the check fails. It is an assertion, not a filter: the field
+// allowlists are what make it unreachable.
+function nixSafe(value) {
+  var text = String(value === undefined || value === null ? "" : value)
+  return !/["\\]/.test(text) && text.indexOf("${") === -1 && !hasControlChars(text)
+}
 
 function nixString(value) {
   return '"' + value + '"'

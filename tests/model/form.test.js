@@ -11,6 +11,28 @@ const snippet = (over) => Model.machineSnippet(form(over), rows, TEMPLATES, HOME
 // Everything that means something to a shell or to Nix's string syntax.
 const HOSTILE = ["$(id)", "`id`", "a;b", "a|b", "a&b", "a>b", "a<b", "a'b", 'a"b', "a\\b", "a\nb", "${HOME}", "a b"]
 
+test("nixSafe is the set nixString may be handed (#22)", () => {
+  ok(!Model.nixSafe('a"b'), "a quote ends the Nix string")
+  ok(!Model.nixSafe("a\\b"), "a backslash escapes in Nix")
+  ok(!Model.nixSafe("a${b}"), "${ interpolates at eval time")
+  ok(!Model.nixSafe("a\u0001b"), "control characters")
+  ok(Model.nixSafe("/home/user/c++"), "a plain path is fine")
+  ok(Model.nixSafe(""), "empty is writable")
+})
+
+test("isHostHome and isHostPath reject what the emitter cannot write (#22)", () => {
+  ok(Model.isHostHome("/home/user"))
+  ok(!Model.isHostHome(""), "empty HOME cannot expand ~/")
+  ok(!Model.isHostHome("~/x"), "HOME is absolute, never ~/-relative")
+  ok(!Model.isHostHome("/home/a\"b"), "a quote would break the emitted string")
+  ok(!Model.isHostHome("/home/${x}"), "interpolation")
+  ok(!Model.isHostHome("/home/../root"), "no .. segment")
+  ok(Model.isHostPath("~/src"), "the host side may be ~/-relative")
+  ok(Model.isHostPath("/srv/a.b"), "a dot inside a name is not a segment")
+  ok(!Model.isHostPath("~/../etc"), "no .. segment")
+  ok(!Model.isHostPath("/srv/./etc"), "no . segment")
+})
+
 test("emptyForm: strings and bools only, disposable by default", () => {
   const f = Model.emptyForm()
   eq(f.kind, "disposable")
