@@ -66,7 +66,7 @@ at a fractional width; and wrap and elide are computed at the small size and
 then stretched, so nothing reflows. `nixarchy.pkg` uses the same 1.45, but as a
 layout-time multiplier into font sizes
 (`function px(base) { return Math.round(base * textScale) }`), with no
-transform. **AGENTS.md:28's claim that this is "the same factor nixarchy-pkg's
+transform. **AGENTS.md:45's claim that this is "the same factor nixarchy-pkg's
 menu uses" is true of the number and false of the mechanism**; the line needs
 correcting alongside any fix.
 
@@ -104,7 +104,7 @@ size and text sharpness, not about compositor scale.
 
 - `Menu.qml`, `Panel.qml`, `MicrovmView.qml`, `VmList.qml`, `CreateForm.qml`,
   `LogView.qml`.
-- `AGENTS.md:28` (the 1.45 claim) and its capture section, whose "456 px" /
+- `AGENTS.md:45` (the 1.45 claim) and its capture section, whose "456 px" /
   "1028 px" card widths stop being fixed constants.
 - `docs/usage.md`, the README and any still or recording whose framing depends
   on the current card size.
@@ -124,7 +124,7 @@ size and text sharpness, not about compositor scale.
 - Do not read `Screen.devicePixelRatio` for layout. Wayland gives layer-shell
   surfaces logical pixels, and using it would double-scale.
 - The fix must honour the desktop text-size setting, not replace it.
-- `AGENTS.md:28` is corrected in the same PR.
+- `AGENTS.md:45` is corrected in the same PR.
 - A user-visible change updates `docs/usage.md` and the README in the same PR.
 
 ## Open questions
