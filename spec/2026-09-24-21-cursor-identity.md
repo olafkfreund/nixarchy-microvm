@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 21
 intent: intent/2026-09-24-21-cursor-identity.md
 ---
