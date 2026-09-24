@@ -119,6 +119,16 @@ would pass — and it scanned `README.md` and excluded it in the same paragraph.
 Instead: the three artifact directories are excluded as a class, and every other
 tracked file is scanned with a per-line allow-list.
 
+*(Correction, recorded after implementation: two more exclusions were needed and
+are in the shipped check — `flake.nix` and `tests/pacman-allowed.txt`. Each
+necessarily contains the pattern it exists to search for, so listing their lines
+would mean editing the allow-list every time the check itself is touched. It is
+the same "excluded as a class, for a reason that does not decay" argument this
+section already makes for the artifact directories, applied to two files that
+self-match. `AGENTS.md:193-195` and the shipped `# check: pacman` both say so;
+this paragraph did not, which is the exact failure mode this whole issue is
+about, so it is corrected here rather than left.)*
+
 `intent/`, `spec/` and `plan/` are excluded because they are design history that
 quotes the rule in order to reason about it, and because the set grows without
 bound — this very task's three artifacts contain 29 of the repository's 39
