@@ -102,8 +102,8 @@ not.
 The form is its own `FocusScope` with its own authority, `focusCurrent()`
 (`CreateForm.qml:119-124`). The same rule applies to `fieldIndex`, stated accurately
 this time: the first draft claimed it "is written by `moveField()` and nothing else",
-which is false — the file writes it at `:95`, `:133`, `:148`, `:153`, `:327` and
-`:407`. The rule is narrower and checkable:
+which is false — it is written at `:95`, `:133`, `:148`, `:153`, `:327` and `:407`.
+The rule is narrower and checkable:
 
 **User navigation writes `fieldIndex` through one helper. Every other writer is
 lifecycle, correction or focus synchronisation, and this is the closed list:**
@@ -127,11 +127,10 @@ Anything else is a spec change. That settles three findings:
   **directly** and re-focuses if the index moved, so a shrinking field set cannot
   leave `current` null (5). The first draft said this clamps "through the existing
   `Model.clampCursor` (`MicrovmView.qml:52`)"; that line clamps `cursorIndex`, a
-  different property, and #21 is rewriting `onRowsChanged` in parallel. `clampCursor`
-  (`Model.js:497-502`) is the tested pure function being reused; `MicrovmView.qml:52`
-  is not a mechanism this change builds on. The clamp does **not** go through
-  `moveFieldTo`: a field set changing under the user is not the user leaving a field,
-  so it must not mark anything `touched`;
+  different property, and #21 is rewriting `onRowsChanged` in parallel. The reused
+  thing is the tested pure function (`Model.js:497-502`), not that line. The clamp
+  does **not** go through `moveFieldTo`: a field set changing under the user is not the
+  user leaving a field, so it must not mark anything `touched`;
 - `onAgentFormChanged` calls the form's own `begin()` (`CreateForm.qml:91-97`), which
   already resets `touched`, `listIndex` and `fieldIndex` and re-focuses, so the
   agent's form lands on a form reset to receive it (5, second half).
@@ -156,20 +155,18 @@ Grepping the view for the same shape: `console_`, `startTerminal`, `logs`, `star
 themselves — left alone.
 
 The same grep found `MicrovmState.askAgent(text)` (`MicrovmView.qml:356`) refusing
-silently at `MicrovmState.qml:335` and `:338`. **That fix is #23's, not this issue's,
-and this spec drops it.** #23's spec §3 already says `askAgent` "still sets
-`agentError` on each refusal, for the IPC and paste paths that skip the key", so
-shipping it here would be the same line written twice in two branches of one file.
+silently at `MicrovmState.qml:335` and `:338`. **That fix is #23's and this spec drops
+it:** #23's spec §3 already has `askAgent` "still sets `agentError` on each refusal,
+for the IPC and paste paths that skip the key".
 
 ### 2a. The agent lifecycle belongs to #23
 
 `openForm` and `openEdit` (`MicrovmView.qml:82-98`) clear `MicrovmState.agentError`
-by hand. #23's spec replaces that with one `resetAgent()` on the singleton, called
-from `openForm`, `openEdit`, `setMode` and `dismiss()`, which also clears `reasoning`
-and `agentForm`. **This issue calls `resetAgent()` and reintroduces no direct
-`agentError` write.** Where the two touch the same lines — `:86`, `:96`, `:123`,
-`:130`, and the `Connections` block at `:362-373` — #23 lands the lifecycle and PR B
-here lands the cursor reset (`createForm.begin()`), in whichever order they merge.
+by hand. #23 replaces that with one `resetAgent()` on the singleton, called from
+`openForm`, `openEdit`, `setMode` and `dismiss()`. **This issue calls `resetAgent()`
+and reintroduces no direct `agentError` write.** Where the two touch the same lines —
+`:86`, `:96`, `:123`, `:130` and the `Connections` block at `:362-373` — #23 lands the
+lifecycle and PR B lands the cursor reset (`createForm.begin()`), in either order.
 
 ### 3. The review does not abbreviate (finding 3)
 
@@ -184,11 +181,9 @@ adapter path keeps its existing substitution to `nixarchy-pkg`: that names the
 command rather than hiding it.
 
 A pure function, `Model.reviewCommandLines(argvs, snippet, optPath)` → array of
-strings, with a Node test. It takes no widths and no card size: the review reads
-correctly because it never measures anything, which is what keeps it correct at
-whatever card size #24 derives from the screen. Cost is a few wrapped lines under a
-snippet that already wraps — worst in the popup, which is also the narrowest card
-#24 will produce.
+strings, with a Node test. It takes no widths and no card size, so it stays correct at
+whatever size #24 derives from the screen. Cost is a few wrapped lines under a snippet
+that already wraps.
 
 ### 4. Width guards as an interim, layout contract in #24 (findings 7, 8)
 
@@ -331,14 +326,12 @@ be abandoned, without holding A hostage.
 
 ## Risks
 
-- **`"confirm"` resolving to `keyCatcher` is reasoned from the host's source, not
-  from a running shell.** The chain is `focus: true` + `blocked` + no `event.accepted`
-  → bubble to `keyRoot`. Every link is quoted above, and the live check below is the
-  first thing to run; if a key still reaches the filter, the next thing to try is
-  focusing `keyRoot`, which the alternatives section prices.
-- **#24 owns three of the files C touches.** Mitigated by the shared invariant in
-  §4 and #24 §5a, and by C being independently abandonable — including dropping its
-  guard hunks wholesale if #24 lands first.
+- **`"confirm"` resolving to `keyCatcher` is reasoned from the host's source, not from
+  a running shell.** The chain — `focus: true`, `blocked`, nothing accepted, bubble to
+  `keyRoot` — is quoted link by link above, but check 1 below is the first thing to
+  run; if a key still reaches the filter, focus `keyRoot` instead (priced above).
+- **#24 owns three of the files C touches.** Mitigated by the shared invariant in §4
+  and #24 §5a, and by C being abandonable, guard hunks included.
 - **#23 owns the agent lifecycle and edits four of the same lines.** Mitigated by
   §2a: this issue calls `resetAgent()` and writes no `agentError`.
 - **#21 is rewriting `MicrovmView.qml:52`.** The form's clamp calls
