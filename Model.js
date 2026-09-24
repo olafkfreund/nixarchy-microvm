@@ -51,6 +51,7 @@ var SHORTCUTS = [
 
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "X", text: "Give up on a change stuck over a minute" },
   { group: "Panel", keys: "?", text: "Show this list" },
 
   { group: "Form", keys: "tab  ↓", text: "Next field" },
