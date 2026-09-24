@@ -184,10 +184,13 @@
 
               # The Pages captures have a budget (docs/img, 8 MB), so the
               # repository stays quick to clone as a plugin folder.
-              if [ -d ${self}/docs/img ]; then
-                size=$(du -sb ${self}/docs/img | cut -f1)
-                [ "$size" -le 8388608 ] || { echo "docs/img is $size bytes, over 8 MB" >&2; exit 1; }
-              fi
+              # check: img-budget
+              # A check asserts its own subject exists. Wrapped in
+              # if [ -d ... ], renaming the directory made the budget silently
+              # stop existing rather than fail.
+              test -d ${self}/docs/img || { echo "docs/img is missing" >&2; exit 1; }
+              size=$(du -sb ${self}/docs/img | cut -f1)
+              [ "$size" -le 8388608 ] || { echo "docs/img is $size bytes, over 8 MB" >&2; exit 1; }
 
               touch "$out"
             '';
