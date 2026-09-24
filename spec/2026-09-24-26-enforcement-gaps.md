@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 26
 intent: intent/2026-09-24-26-enforcement-gaps.md
 ---
