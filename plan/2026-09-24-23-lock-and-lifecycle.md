@@ -37,6 +37,31 @@ after every step.
 
 ## Steps
 
+**Deviation, recorded 2026-09-24 before implementation: steps 1 and 2 are
+deferred, and the code steps run first.**
+
+Both are live determinations on a desktop. The attempt was made on p620, where
+a Hyprland 0.56.0 session with quickshell 0.3.1 is running and the plugin is
+installed as the owner's Home Manager symlink into the nix store. Three reasons
+to stop, and the owner agreed:
+
+- AGENTS.md's live procedure requires that the owner not be using the desktop.
+  They were using it — the session driving this work runs on it. Step 1 stops
+  the shell, which AGENTS.md notes blanks the bar.
+- Both steps name razer in their commit subjects. p620 is not razer, and
+  AGENTS.md's Known follow-ups still lists "Wire p620 to this flake", so a
+  finding recorded here under a razer label would be false provenance.
+- A symlinked plugin does not reload, so testing means replacing the owner's
+  installed plugin and restoring the Home Manager link afterwards.
+
+Deferring is safe because the two findings are not blocking dependencies. The
+approved spec's design is correct whichever way each resolves: the watchdog
+arms only when no Process is running, and Menu.qml's onDestruction is guarded
+by root.opened, so if a finding is not a bug the code is inert rather than
+wrong. The `## Findings` section stays empty until the determinations run, and
+the steps keep their numbers so the trail matches this plan.
+
+
 1. **Live determination: finding 1.** No code. Install the current HEAD copy by
    the Tests section's procedure, take `nixarchy-service-enable` off `PATH`,
    press `c` through a permanent create for `p1`, read `omarchy shell
