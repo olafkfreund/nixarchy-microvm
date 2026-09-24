@@ -68,11 +68,6 @@ test("parsePending takes nixarchy-pkg's answer and nothing else", () => {
   eq(Model.parsePending(JSON.stringify({ ok: true, changes: [{ marker: "opt:services.foo" }] })).machines, {})
 })
 
-test("parseJsonLines keeps object lines and skips noise and broken JSON", () => {
-  const raw = '{"ok":true}\nWARN something\n{broken\n\n{"ok":false}\n'
-  eq(Model.parseJsonLines(raw), [{ ok: true }, { ok: false }])
-  eq(Model.parseJsonLines(undefined), [])
-})
 
 test("stripAnsi removes colour, OSC and \\r redraws", () => {
   eq(Model.stripAnsi("\x1b[32m [ OK ]\x1b[0m done"), " [ OK ] done")
@@ -152,4 +147,19 @@ test("names from Object.prototype are rows, not prototype members (#22)", () => 
   eq(Object.prototype.runtime, undefined)
   eq(Object.prototype.pending, undefined)
   eq(({}).constructor.runtime, undefined)
+})
+
+test("sanitize drops the code points that reorder text (#37)", () => {
+  // U+202E renders "rm <override>gnp.txt" as "rm txt.png" — a line that lies.
+  eq(Model.errorText("error: rm ‮gnp.txt"), "rm gnp.txt")
+  for (const cp of ["‪", "‫", "‬", "‭", "‮",
+                    "⁦", "⁧", "⁨", "⁩"]) {
+    eq(Model.sanitize("a" + cp + "b", 64), "ab")
+  }
+  // Separators break a one-line field into two.
+  eq(Model.sanitize("a b", 64), "ab")
+  eq(Model.sanitize("a b", 64), "ab")
+  // Kept on purpose: these mark direction and cannot reorder.
+  eq(Model.sanitize("a‎b", 64), "a‎b")
+  eq(Model.sanitize("a‏b", 64), "a‏b")
 })

@@ -106,3 +106,37 @@ test("agentFailure: claude's own message, then stderr, then the exit code (#8)",
   eq(long.length, 160)
   eq(Model.agentFailure(JSON.stringify({ is_error: true, result: "bad\u001b[31m\nline" }), "", 1), "bad[31mline")
 })
+
+test("parseAgentReply scans a hostile reply in linear time (#35)", () => {
+  // The measured regression: this shape took 1.5 s at 1 KB, 6 s at 2 KB and
+  // 25 s at 4 KB through the old nested loop, on the UI thread.
+  for (const n of [500, 1000, 2000]) {
+    const hostile = "x" + "{".repeat(n) + "}".repeat(n)
+    const started = Date.now()
+    eq(Model.parseAgentReply(hostile), null)
+    ok(Date.now() - started < 500, (n * 2) + " bytes took " + (Date.now() - started) + " ms")
+  }
+})
+
+test("parseAgentReply still finds a proposal wrapped in prose (#35)", () => {
+  // The behaviour the old loop had, which the new scan must keep.
+  eq(Model.parseAgentReply('Sure:\n{"kind":"disposable","name":"t1"}\nAnything else?'),
+    { kind: "disposable", name: "t1" })
+  // Outermost-first: the envelope wins over a nested object, as before.
+  const nested = '{"name":"outer","inner":{"kind":"disposable","name":"inner"}}'
+  eq(Model.parseAgentReply(nested).name, "outer")
+})
+
+test("parseAgentReply is not fooled by a brace inside a string (#35)", () => {
+  // A depth counter that ignores strings truncates this to {"name":"a} .
+  eq(Model.parseAgentReply('{"name":"a}b","kind":"disposable"}'),
+    { name: "a}b", kind: "disposable" })
+  eq(Model.parseAgentReply('{"name":"q\\"}","kind":"disposable"}').kind, "disposable")
+})
+
+test("parseAgentReply ignores unbalanced braces around a reply (#35)", () => {
+  eq(Model.parseAgentReply('{{{ {"kind":"disposable"} }}}'), { kind: "disposable" })
+  eq(Model.parseAgentReply("{{{{"), null)
+  eq(Model.parseAgentReply("}}}}"), null)
+  eq(Model.parseAgentReply(""), null)
+})

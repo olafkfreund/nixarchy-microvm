@@ -101,7 +101,13 @@ function sanitize(value, maxLength) {
   var out = ""
   for (var i = 0; i < text.length; i++) {
     var code = text.charCodeAt(i)
-    if (code < 0x20 || code === 0x7F || (code >= 0x80 && code <= 0x9F)) continue
+    // Bidi overrides and isolates reorder what follows them, so a string can
+    // render as something other than what it is; the separators break a line
+    // in two. U+200E and U+200F are kept on purpose: they only mark direction
+    // and cannot reorder.
+    if (code < 0x20 || code === 0x7F || (code >= 0x80 && code <= 0x9F) ||
+        (code >= 0x202A && code <= 0x202E) || (code >= 0x2066 && code <= 0x2069) ||
+        code === 0x2028 || code === 0x2029) continue
     out += text.charAt(i)
   }
   out = out.replace(/^\s+|\s+$/g, "")
@@ -148,6 +154,21 @@ function capLine(line) {
   return text.length > LINE_CAP ? text.substring(0, LINE_CAP - 1) + "…" : text
 }
 
+var LOG_CAP = 400
+
+// The log's whole growth rule in one place: clean each incoming line, append,
+// keep the last LOG_CAP. `existing` arrives as a Qt sequence wrapper, so it is
+// walked by index -- never concat, never Array.isArray (AGENTS.md). Pure: it
+// returns a new plain array and never touches root.log.
+function capLog(existing, incoming) {
+  var out = []
+  var have = existing || []
+  for (var i = 0; i < have.length; i++) out.push(have[i])
+  var add = incoming || []
+  for (var j = 0; j < add.length; j++) out.push(capLine(stripAnsi(add[j])))
+  return out.length > LOG_CAP ? out.slice(out.length - LOG_CAP) : out
+}
+
 // ---------------------------------------------------------------- identifiers
 
 var KINDS = ["disposable", "permanent"]
@@ -164,6 +185,16 @@ function isTemplateName(value) {
   return /^[a-z][a-z0-9-]{0,31}$/.test(String(value === undefined || value === null ? "" : value))
 }
 
+// A name that may stand as an unquoted Nix attribute: the floor for every
+// writer that touches apps.nix. Laxer than isVmName, the rule for what this
+// plugin will *create*; stricter than isReportedName, what the CLI and systemd
+// may hand back. A leading digit is the case that matters -- `{ 9x = 1; }` is
+// a Nix syntax error, while `{ a_b = 1; }` is fine, so an underscore is in and
+// anywhere. `'` is legal in Nix and left out on purpose.
+function isNixAttrName(value) {
+  return /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/.test(String(value === undefined || value === null ? "" : value))
+}
+
 var OPT_PREFIX = "programs.nixarchy.services.microvm.machines."
 
 function optPath(name) {
@@ -172,19 +203,6 @@ function optPath(name) {
 
 // ---------------------------------------------------------------- parsing
 
-function parseJsonLines(raw) {
-  var lines = String(raw || "").split("\n")
-  var out = []
-  for (var i = 0; i < lines.length; i++) {
-    var line = trim(lines[i])
-    if (line.charAt(0) !== "{") continue
-    try {
-      out.push(JSON.parse(line))
-    } catch (e) {
-    }
-  }
-  return out
-}
 
 // `[` first means the JSON the upstream PR adds; anything else is today's
 // text. The caller learns which it got from `isJsonList`.
@@ -288,8 +306,11 @@ function parseUnits(raw) {
 // assignment whose left-hand path equals the marker's, and whose value
 // reads back under the grammar machineSnippet writes. A marker with
 // anything else on its line is shown but never rewritten
-// (managed-unsupported). A commented-out line declares nothing and is
-// skipped: nixarchy would not build it either.
+// (managed-unsupported). So is a marker whose name is not a valid unquoted
+// Nix attribute: the writers refuse such a name, so the row must not offer an
+// edit or a remove it cannot carry out. Its fields are kept as parsed, so the
+// row still shows what the line says. A commented-out line declares nothing
+// and is skipped: nixarchy would not build it either.
 function parseMachineLines(text) {
   var out = []
   var lines = String(text || "").split("\n")
@@ -304,7 +325,7 @@ function parseMachineLines(text) {
     var body = line.substring(0, marker.index)
     var assign = body.match(/^\s*programs\.nixarchy\.services\.microvm\.machines\.([A-Za-z0-9_-]+)\s*=\s*([\s\S]*?);\s*$/)
     var fields = assign && assign[1] === name ? parseMachineSnippet(assign[2]) : null
-    out.push({ name: name, ownership: fields ? "managed" : "managed-unsupported", fields: fields, line: trim(line) })
+    out.push({ name: name, ownership: fields && isNixAttrName(name) ? "managed" : "managed-unsupported", fields: fields, line: trim(line) })
   }
   return out
 }
@@ -631,10 +652,9 @@ function reconcilePlan(currentKeys, nextRows) {
 
 function counts(rows) {
   var list = rows || []
-  var out = { total: list.length, running: 0, stopped: 0, failing: 0, pending: 0 }
+  var out = { total: list.length, running: 0, failing: 0, pending: 0 }
   for (var i = 0; i < list.length; i++) {
     if (list[i].runtime === "running") out.running++
-    else out.stopped++
     if (list[i].runtime === "failed") out.failing++
     if (list[i].pending) out.pending++
   }
@@ -1267,11 +1287,11 @@ function optSetArgv(pkg, name, snippet) {
 }
 
 function optReplaceArgv(pkg, name, snippet) {
-  return pkg && isReportedName(name) && snippet ? [pkg, "opt", "replace", optPath(name), snippet] : null
+  return pkg && isNixAttrName(name) && snippet ? [pkg, "opt", "replace", optPath(name), snippet] : null
 }
 
 function optRemoveArgv(name) {
-  return isReportedName(name) ? ["nixarchy-opt-remove", optPath(name)] : null
+  return isNixAttrName(name) ? ["nixarchy-opt-remove", optPath(name)] : null
 }
 
 function copyArgv(name) {
@@ -1485,6 +1505,25 @@ function agentPrompt(text, templates) {
   return lines.join("\n")
 }
 
+// Every balanced {…} in the text, as [start, end] with end past the closing
+// brace. String-aware: a brace inside a JSON string is text, not depth, or
+// `{"a":"}"}` comes back truncated. Unmatched `{` are dropped.
+function braceSpans(text) {
+  var s = String(text), stack = [], out = [], inString = false, escaped = false
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charAt(i)
+    if (escaped) { escaped = false; continue }
+    if (c === "\\") { if (inString) escaped = true; continue }
+    if (c === "\"") { inString = !inString; continue }
+    if (inString) continue
+    if (c === "{") stack.push(i)
+    else if (c === "}" && stack.length) out.push([stack.pop(), i + 1])
+  }
+  return out
+}
+
+var MAX_CANDIDATES = 64
+
 function parseObject(text) {
   try {
     var v = JSON.parse(String(text))
@@ -1502,13 +1541,19 @@ function parseAgentReply(raw) {
   var env = parseObject(text)
   if (!env) {
     // Prose around JSON: the outermost {…} that parses and looks like a
-    // proposal. Tiny input, so the quadratic scan costs nothing.
-    for (var start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
-      for (var e = text.length; e > start; e--) {
-        if (text.charAt(e - 1) !== "}") continue
-        var candidate = parseObject(text.substring(start, e))
-        if (candidate && ("kind" in candidate || "name" in candidate)) return candidate
-      }
+    // proposal. This runs on the UI thread from a .pragma library and the
+    // reply is untrusted data, so the old nested loop -- JSON.parse over an
+    // O(n) substring, twice nested -- froze both surfaces for 25 s on a 4 KB
+    // reply. braceSpans is one linear string-aware pass; spans are tried
+    // outermost-first, which is the order the old loop found them in.
+    // ponytail: MAX_CANDIDATES is the ceiling on the parsing, not the scan.
+    // Raise it if a real reply is ever found to need more than 64 candidates.
+    var spans = braceSpans(text)
+    spans.sort(function(a, b) { return a[0] - b[0] || b[1] - a[1] })
+    var tried = spans.length < MAX_CANDIDATES ? spans.length : MAX_CANDIDATES
+    for (var i = 0; i < tried; i++) {
+      var candidate = parseObject(text.substring(spans[i][0], spans[i][1]))
+      if (candidate && ("kind" in candidate || "name" in candidate)) return candidate
     }
     return null
   }
