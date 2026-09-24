@@ -12,8 +12,9 @@ import "Model.js" as Model
 // arrows, Enter and Esc mean the same thing everywhere.
 //
 // No Popup anywhere: the template and key pickers are inline lists under
-// their field. A Popup is reparented to the overlay and would ignore the
-// menu's scale.
+// their field. That is a choice about behaviour, not a workaround -- an inline
+// list scrolls with the form, keeps the keyboard model uniform, and cannot be
+// clipped by a surface it does not know about.
 FocusScope {
   id: root
 
@@ -63,7 +64,12 @@ FocusScope {
   readonly property var keyChoices: keysMatching(form.sshKey).slice(0, 6)
   readonly property string title: form.editing ? "Edit " + form.name : "New VM"
 
-  implicitHeight: formColumn.implicitHeight
+  // The fixed parts, and then whatever the fields need. formColumn is no longer
+  // read for a natural height: it is anchors.fill, so reading it would be
+  // reading the height we were given.
+  readonly property int formChrome: headerRow.implicitHeight + hints.implicitHeight
+    + formColumn.spacing * 2
+  implicitHeight: formChrome + fieldsColumn.implicitHeight
 
   function keysMatching(typed) {
     var q = String(typed || "").toLowerCase()
@@ -230,6 +236,7 @@ FocusScope {
     spacing: Style.spacing.md
 
     Row {
+      id: headerRow
       width: parent.width
       spacing: Style.spacing.md
 
@@ -270,7 +277,7 @@ FocusScope {
     Flickable {
       id: flick
       width: parent.width
-      height: Math.min(fieldsColumn.implicitHeight, Style.space(400))
+      height: Math.max(0, root.height - root.formChrome)
       contentHeight: fieldsColumn.implicitHeight
       clip: true
       boundsBehavior: Flickable.StopAtBounds
@@ -472,6 +479,7 @@ FocusScope {
     }
 
     Text {
+      id: hints
       width: parent.width
       horizontalAlignment: Text.AlignRight
       text: {
