@@ -147,7 +147,13 @@ or a pathological HOME yields a null snippet with no field error.
    host path — so an older line stays editable, and that this is syntactic
    safety, not a claim that the line came from this emitter.
    → verify by reading it against steps 1–5; `nix flake check`.
-8. **`docs/usage.md:175-177`: say what the shares field now refuses.** The
+8. **`docs/usage.md:175-177`: say what the shares field now refuses.**
+   *(Deviation, recorded when steps 7 and 8 were implemented: they landed in a
+   single commit. Both are prose stating the same rule, and separating them
+   would have left the code comment corrected while the user-facing text still
+   described the old behaviour for one commit. The one-commit-per-step rule is
+   there so review can follow the plan; two prose edits of one rule read better
+   together than apart.)* The
    host path may not contain `.` or `..` segments, and `~/` needs a plain
    absolute HOME. One sentence; `README.md:216` already says tags are unique
    and needs no change.

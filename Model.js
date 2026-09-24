@@ -871,11 +871,22 @@ function validateForm(form, rows, templates, hostHome) {
 //
 // The one line this plugin writes for a permanent VM, and the only Nix it
 // ever emits. Every field is written, defaults included, so the line reads
-// back into the form without knowing the module's defaults. Only validated
-// values reach it, and every string in it is drawn from a set with no " \
-// or ${, so it needs no escaping. parseMachineSnippet reads exactly this
-// and nothing else: a line changed by hand is recognised as not ours
-// rather than rewritten.
+// back into the form without knowing the module's defaults.
+//
+// Nothing is escaped. That is safe because every string is checked against
+// nixSafe immediately before it is written and the line is refused otherwise,
+// not because the values happen to be clean: an earlier version of this
+// comment claimed the latter and was wrong, since HOME was spliced into a
+// share source after isPath had judged the raw ~/ token. The field allowlists
+// -- isTemplateName, isHostPath, normalizeGuestPath, isHostHome, the tag
+// sanitiser and SSH_KEY -- are why that check never fires for a form a user
+// could submit.
+//
+// parseMachineSnippet deliberately accepts a superset of this: a wider tag, a
+// .. in a host path. That keeps a line an earlier version wrote editable
+// instead of disowning it. It is a judgement about syntax, not a claim that
+// the line came from this emitter -- and a line changed by hand outside the
+// grammar is still recognised as not ours rather than rewritten.
 
 // What the emitter is allowed to write inside "…". Nix interprets " \ and ${,
 // and nixString escapes nothing, so every string is checked here first and the
