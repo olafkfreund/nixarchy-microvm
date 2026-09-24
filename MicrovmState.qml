@@ -128,6 +128,10 @@ Singleton {
   // launch rather than read from queue[0], which holds the remainder after the
   // slice and so names the culprit's successor.
   property string pendingCommand: ""
+  // Offered only once a hold owned by a running Process has looked stuck for a
+  // minute. Never set for streamProcess: a build the user can watch in the log
+  // is not stuck, it is slow.
+  property bool escapable: false
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
@@ -210,6 +214,9 @@ Singleton {
 
   function launch(proc, argv) {
     root.pendingCommand = Model.commandName(argv)
+    root.escapable = false
+    escapeTimer.stop()
+    if (proc === actionProcess) escapeTimer.restart()
     proc.stdinEnabled = true
     proc.command = argv
     proc.running = true
@@ -293,6 +300,20 @@ Singleton {
   // to collide with — so clearing it cannot produce two mutations at once. If
   // Quickshell does emit exited on a failed exec, this never arms for 5 s and
   // the timer is dead code.
+  // The other half of the lock: a hold owned by a running Process. No timer
+  // ever clears it — only the user, and only after the child is dead. abandon()
+  // signals and returns; the existing onExited releases the lock when the kernel
+  // says the process is gone, so a release can never race a live opt set.
+  Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
+  Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
+
+  function abandon() {
+    if (!actionProcess.running) return
+    root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
+    actionProcess.signal(15)
+    killTimer.restart()
+  }
+
   Timer {
     id: queueWatchdog
     interval: 5000
@@ -563,6 +584,9 @@ Singleton {
         root.lastError = why
         root.queue = []
       }
+      root.escapable = false
+      escapeTimer.stop()
+      killTimer.stop()
       if (root.queue.length > 0) {
         // Started on the next tick, not from inside this process's own exit.
         // The queue is only consumed in the same synchronous step that starts
