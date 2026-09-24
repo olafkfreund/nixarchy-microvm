@@ -209,6 +209,7 @@ Singleton {
   }
 
   function launch(proc, argv) {
+    root.pendingCommand = Model.commandName(argv)
     proc.stdinEnabled = true
     proc.command = argv
     proc.running = true
@@ -285,6 +286,26 @@ Singleton {
     next.push(Model.capLine(Model.stripAnsi(line)))
     if (next.length > 400) next.splice(0, next.length - 400)
     root.log = next
+  }
+
+  // A queue with nothing running is a hold no exit will ever release: the
+  // command was launched and never started. Provably inert — there is no child
+  // to collide with — so clearing it cannot produce two mutations at once. If
+  // Quickshell does emit exited on a failed exec, this never arms for 5 s and
+  // the timer is dead code.
+  Timer {
+    id: queueWatchdog
+    interval: 5000
+    running: root.queue.length > 0 && !actionProcess.running && !streamProcess.running
+    onTriggered: {
+      root.queue = []
+      root.lastError = Model.processFailure({
+        verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+        command: root.pendingCommand, reason: "did not start"
+      })
+      root.pendingVerb = ""
+      root.pendingKey = ""
+    }
   }
 
   // ----------------------------------------------------------- side effects
@@ -547,9 +568,11 @@ Singleton {
         // The queue is only consumed in the same synchronous step that starts
         // the next command, so `mutating` never drops between the two.
         Qt.callLater(function() {
-          var next = root.queue[0]
+          // Launch before slicing, so the two holders of the lock overlap: a
+          // late tick makes the plugin slow, never unsafe. Slicing first would
+          // leave a window with an empty queue and no running Process.
+          root.launch(actionProcess, root.queue[0])
           root.queue = root.queue.slice(1)
-          root.launch(actionProcess, next)
         })
         return
       }
