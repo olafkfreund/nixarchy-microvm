@@ -58,8 +58,9 @@ do not, the safety net is imaginary exactly when it is trusted.
 
 4. **The hex-colour check is narrower than the rule.** `flake.nix:143` greps
    `'"#[0-9a-fA-F]{3,8}"'` over `${plugin}/*.qml` only. It catches `#RRGGBBAA`
-   and uppercase, but misses `'#ff0000'` in single quotes (valid QML), never
-   scans `Model.js`, and cannot see `rgba()`, three-digit hex or named colours.
+   and uppercase, and does match three-digit hex, but it misses `'#ff0000'` in
+   single quotes (valid QML), never scans `Model.js`, and cannot see `rgba()`,
+   `Qt.rgba()` or named colours.
    `VmList.qml:151` and `:196` both use `"transparent"` today, invisible to it.
 
 5. **The pacman/yay check scans two globs; the plugin ships the whole
@@ -83,9 +84,11 @@ do not, the safety net is imaginary exactly when it is trusted.
    `AGENTS.md` omits schema and singleton, `README.md` omits entry points.
    Whoever reasons from either line reasons from a wrong list.
 
-8. **`manifest.json:20` omits `e` from the bar-widget key list**, although
-   `MicrovmView.qml:230` aliases it to `enter` and `README.md:69` documents
-   `enter` `e` together. And `docs/usage.md` has no keyboard table at all — it
+8. **The bar-widget description in `manifest.json:20` omits the `e` alias.**
+   That line is a prose `description` string, not a key list — there is no
+   key-list field in the manifest — but it enumerates the keys for the user,
+   and `e` is absent although `MicrovmView.qml:230` aliases it to `enter` and
+   `README.md:69` documents `enter` `e` together. And `docs/usage.md` has no keyboard table at all — it
    points at the README (`docs/usage.md:11`). That leaves the "update
    `docs/usage.md` and the README in the same PR" rule unenforceable for key
    changes, since only one of the two files can drift.
