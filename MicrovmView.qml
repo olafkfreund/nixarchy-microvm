@@ -128,7 +128,16 @@ FocusScope {
     if (target === "log") logView.forceActiveFocus()
     else if (target === "form") createForm.focusCurrent()
     else if (target === "review") review.forceActiveFocus()
-    else keyCatcher.forceActiveFocus()
+    else {
+      // Taking focus away from the filter is the operation, not a tidy-up:
+      // keyCatcher's `blocked` includes filterField.activeFocus, so leaving the
+      // filter focused swallows every row key. reset() cleared it and
+      // focusForMode did not, so the paths that call this without going through
+      // reset() -- Menu.qml's onVisibleChanged, and every mode change back to
+      // the list -- left the filter holding the keyboard.
+      filterField.focus = false
+      keyCatcher.forceActiveFocus()
+    }
   }
 
   // c, IPC create, or the menu's {"create":true}.
