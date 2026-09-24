@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 24
 spec: spec/2026-09-24-24-surface-scaling.md
 ---
@@ -165,6 +165,35 @@ split commit because its `height: implicitHeight` (`:37`) conflicts with the
    transform. `docs/usage.md` and `README.md` each gain a line: the surfaces
    follow the screen and the desktop text size, and the menu is no longer
    magnified. → verify by `nix flake check`.
+
+9. **`MicrovmView.qml`, `Menu.qml`: the role ladder (spec §4a, #27).** Added by
+   amendment after steps 1-8 landed; step 2 removed the transform and this is its
+   replacement, without which the menu ships at bar-popup text size.
+
+   `MicrovmView` gains `property bool large: false` and a resolver per text role,
+   each one rung higher when `large`:
+
+   | role | base | large |
+   | --- | --- | --- |
+   | caption | `Style.font.caption` | `Style.font.title` |
+   | body | `Style.font.body` | `Style.font.heading` |
+   | title | `Style.font.title` | `Style.font.display` |
+
+   `caption → title` is required, not chosen: it is what makes `PanelHero`'s
+   hardcoded title (`:57`) and `ConfirmDialog`'s message (`:76-79`) land on the
+   same rung as this repo's own text. Every `font.pixelSize: Style.font.*` in
+   `MicrovmView.qml`, `VmList.qml`, `CreateForm.qml`, `LogView.qml` and
+   `ShortcutSheet.qml` goes through the resolver. `Menu.qml` passes
+   `large: true`; `Panel.qml` passes nothing.
+
+   → verify by `git diff main -- Panel.qml` showing only §3's width change and
+   nothing font-related — the popup must be provably unchanged, since no
+   automated check can see appearance. Then the live checks below at text size 9,
+   12 and 18: the menu is legibly larger than the popup at each, and moves when
+   the desktop text size moves.
+
+   Not attempted before the owner approves the amended §4a: this reverses a
+   decision they approved.
 
 ## Tests
 
