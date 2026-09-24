@@ -35,6 +35,66 @@ escape, its UI, the degraded reads, the agent, `probe()`, the menu; docs last,
 once the key exists to document. The tree builds and `node tests/run.js` passes
 after every step.
 
+## Findings
+
+Recorded 2026-09-24 on **p620**, not razer — the steps name razer, and that
+label is wrong for this run. Everything else in the procedure was followed:
+shell stopped, the built copy swapped in for the Home Manager symlink, shell
+restarted, bar confirmed healthy (`pluginBarApiFor` 0, `target omarchy.bar` 1),
+and the symlink restored afterwards.
+
+**finding 1: no exit emitted — the wedge is REAL.**
+
+Determined with a standalone `qs -p` bench rather than by driving a permanent
+create through the UI, because that path writes to the owner's `apps.nix` and
+the question does not need it. A `Process` given a command that does not exist:
+
+```
+after running=true: running=false pid=null
+t+1.5s  running=false pid=null      (and the same at 3s, 4.5s, 6s)
+no started signal, no exited signal
+```
+
+So Quickshell 0.3.1 does not report a failed exec at all: no signal, `running`
+false synchronously, `processId` null. A queue-only hold therefore has nothing
+that will ever clear it, which is exactly the wedge step 5's watchdog exists
+for — and its arming condition (`queue.length > 0 && !actionProcess.running &&
+!streamProcess.running`) is true immediately in that state, so it fires. The
+design is correct in the world we are actually in, and would have been inert in
+the other.
+
+**finding 5: not determined.**
+
+It needs the full-screen menu, and the menu has never been enabled on this
+host: `nixarchy.microvm` is absent from `shell.json`'s `plugins` array, so the
+bar widget loads and answers IPC while no menu surface is registered.
+`omarchy-shell shell toggle nixarchy.microvm '{}'` returns 0 and opens nothing,
+and `hyprctl layers -j` shows no `nixarchy-microvm-menu`. Enabling it writes
+the owner's `shell.json`, which was not in scope for a verification run, so it
+was left alone.
+
+`Menu.qml`'s `Component.onDestruction` is guarded by `root.opened`, so it stays
+inert either way. To determine it: `omarchy plugin enable nixarchy.microvm`
+with the shell stopped, restart, open the menu, trigger a reload, then read
+`views` twice 30 s apart with nothing open.
+
+**What else was confirmed in the same run** (all six issues are on `main`):
+
+- Zero binding-loop warnings, with the popup open and rendering — the acyclic
+  binding graph #24 argued for on paper holds at runtime.
+- Zero QML errors from this plugin. The `fontSize` ladder wiring loads, which
+  is the half of #24 step 9 that nothing automated could check.
+- `statusJson` carries the new fields: `schemaLoaded: true`, `stale: []`,
+  `command: ""`, `pid: null`.
+- Feature detection: `vmDetach`, `vmConsole` and `vmSetTemplate` all true;
+  `optReplace` true; `agent` claude; nine templates parsed.
+- `views: 0` and only the slow poll while every surface is closed, rising while
+  the popup is open — the polling rule holds.
+
+**Still unverified:** everything that needs the menu (its card width, the
+`large` ladder, finding 5), and every behavioural check that needs VMs — this
+host has none, so the list rendered empty.
+
 ## Steps
 
 **Deviation, recorded 2026-09-24 before implementation: steps 1 and 2 are
