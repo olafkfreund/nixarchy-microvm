@@ -210,15 +210,6 @@ Singleton {
     return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + root.pendingKey.split(":")[1] : "") + " — wait for it to finish"
   }
 
-  // Only rows the lists reported. A name typed from outside (IPC) that is
-  // not in the list never reaches a command.
-  function known(kind, name) {
-    var row = Model.rowByName(root.allRows, kind, name)
-    if (row) return row
-    root.lastError = "No " + kind + " VM called " + name
-    return null
-  }
-
   function launch(proc, argv) {
     root.pendingCommand = Model.commandName(argv)
     root.escapable = false
