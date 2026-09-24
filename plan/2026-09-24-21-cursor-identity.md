@@ -98,8 +98,11 @@ One commit per step, each citing the step.
    the filter field's `onTextChanged` (`:482`) add `root.cursorKey = ""` beside
    `root.cursorIndex = 0` (`:484`). Leave `VmList`'s bindings (`:504-505`)
    alone — they stay index-based.
-   → verify by `grep -n 'rows\[cursorIndex\]\|clampCursor' MicrovmView.qml`
-   returning nothing, then `nix flake check`.
+   → verify by `grep -n 'rows\[cursorIndex\]' MicrovmView.qml` returning
+   nothing, then `nix flake check`. (Deviation, recorded during step 2: the
+   step's original check also grepped for `clampCursor`, but `setCursor`'s call
+   at `:227` is step 3's to remove, so that half of the check cannot pass until
+   step 3 lands. Split accordingly; step 3 greps for `clampCursor`.)
 
 3. **`VmList.qml` + `MicrovmView.qml`: hover sends a key.** `VmList.qml:33`
    becomes `signal cursorRequested(string key)`; `:123` becomes

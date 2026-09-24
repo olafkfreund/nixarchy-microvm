@@ -39,17 +39,25 @@ FocusScope {
   property bool helpOpen: false
 
   property int cursorIndex: 0
+  // The cursor's identity. cursorIndex is a cache of where this key currently
+  // sits, so a list that re-sorts under the user moves the cursor with the
+  // machine instead of leaving it on a slot (#21).
+  property string cursorKey: ""
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
 
   // ------------------------------------------------------------- derivation
 
   readonly property var rows: Model.filterRows(MicrovmState.rows, filterText)
-  readonly property var cursorRow: cursorIndex >= 0 && cursorIndex < rows.length ? rows[cursorIndex] : null
+  readonly property var cursorRow: Model.rowByKey(rows, cursorKey)
   readonly property var features: MicrovmState.featureState
   readonly property var listActions: Model.listActions(features, MicrovmState.counts)
 
-  onRowsChanged: root.cursorIndex = Model.clampCursor(root.cursorIndex, rows.length)
+  onRowsChanged: {
+    var c = Model.resolveCursor(rows, root.cursorKey, root.cursorIndex)
+    root.cursorKey = c.key
+    root.cursorIndex = c.index
+  }
 
   // ------------------------------------------------------------ lifecycle
 
@@ -60,6 +68,7 @@ FocusScope {
     mode = "list"
     cursorActive = false
     cursorIndex = 0
+    cursorKey = ""
     filterText = ""
     filterField.text = ""
     filterField.focus = false
@@ -209,6 +218,7 @@ FocusScope {
     cursorActive = true
     cursorFromKeyboard = true
     cursorIndex = next.index
+    cursorKey = next.index >= 0 && next.index < rows.length ? rows[next.index].key : ""
   }
 
   function setCursor(index) {
@@ -482,6 +492,7 @@ FocusScope {
           onTextChanged: {
             root.filterText = text
             root.cursorIndex = 0
+            root.cursorKey = ""
           }
           Keys.onEscapePressed: {
             if (text.length > 0) text = ""
