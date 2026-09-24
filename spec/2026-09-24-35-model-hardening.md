@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 35
 intent: intent/2026-09-24-35-model-hardening.md
 ---
