@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 25
 intent: intent/2026-09-24-25-view-and-form.md
 ---
