@@ -631,10 +631,9 @@ function reconcilePlan(currentKeys, nextRows) {
 
 function counts(rows) {
   var list = rows || []
-  var out = { total: list.length, running: 0, stopped: 0, failing: 0, pending: 0 }
+  var out = { total: list.length, running: 0, failing: 0, pending: 0 }
   for (var i = 0; i < list.length; i++) {
     if (list[i].runtime === "running") out.running++
-    else out.stopped++
     if (list[i].runtime === "failed") out.failing++
     if (list[i].pending) out.pending++
   }

@@ -134,7 +134,7 @@ test("reconcilePlan turns one key order into another", () => {
 
 test("counts, summaryText and footerText", () => {
   const rows = disposable().concat(permanent())
-  eq(Model.counts(rows), { total: 7, running: 2, stopped: 5, failing: 1, pending: 1 })
+  eq(Model.counts(rows), { total: 7, running: 2, failing: 1, pending: 1 })
   eq(Model.summaryText(rows, true), "2 of 7 running")
   eq(Model.summaryText([], true), "No VMs")
   eq(Model.summaryText(rows, false), "nixarchy-vm not found")
