@@ -109,6 +109,25 @@
                 test -f "${plugin}/$f" || { echo "entry point $f missing from the package" >&2; exit 1; }
               done
 
+              # check: files-list
+              # AGENTS.md makes the files list a rule; nothing enforced it, so a
+              # new runtime file could be imported, forgotten, and still pass
+              # every check while the plugin broke at load. A deny-list rather
+              # than an extension allow-list, so an unrecognised new root file
+              # fails until someone classifies it instead of being ignored.
+              # -type f excludes directories as a class, because pluginFor
+              # flattens each entry to its basename, so nothing under tests/,
+              # docs/, share/ or the artifact directories could ship correctly
+              # even if it were listed.
+              printf '%s\n' .gitignore AGENTS.md CLAUDE.md README.md flake.lock flake.nix \
+                | sort > deny
+              (cd ${self} && find . -maxdepth 1 -type f -printf '%f\n') | sort > root
+              comm -23 root deny > required
+              ls -1 ${plugin} | sort > packaged
+              comm -23 required packaged | sed 's/$/: at the repository root, missing from the files list/' >&2
+              comm -13 required packaged | sed 's/$/: packaged, but not a root file outside the deny-list/' >&2
+              [ -z "$(comm -3 required packaged)" ] || exit 1
+
               # The schema is handed to claude verbatim; a broken one is an
               # agent that never answers. Strict, and without a $schema key,
               # which claude's validator refuses.
