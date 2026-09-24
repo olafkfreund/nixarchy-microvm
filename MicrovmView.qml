@@ -387,8 +387,12 @@ FocusScope {
               createForm.setForm(got.form)
               createForm.reasoning = got.reasoning
               if (got.rejected.length > 0) MicrovmState.agentError = "ignored (wrong type): " + got.rejected.join(", ")
+              // begin() re-establishes the form's own state and defers
+              // focusCurrent itself. It clears attempted, so that is set back
+              // afterwards: the agent's proposal should show its errors
+              // immediately rather than waiting for the user to touch a field.
+              createForm.begin()
               createForm.attempted = true
-              Qt.callLater(createForm.focusCurrent)
             }
           }
         }
