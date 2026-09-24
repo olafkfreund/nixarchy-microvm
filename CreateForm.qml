@@ -55,6 +55,15 @@ FocusScope {
   property string agentError: ""
 
   readonly property var fields: Model.visibleFields(form, features)
+  // The field set can shrink under the user -- an agent reply that switches
+  // kind drops six fields -- which left fieldIndex past the end, current null,
+  // the hint blank and space dead until Tab. Not through moveFieldTo: a field
+  // set changing underneath is not the user leaving a field, so nothing is
+  // marked touched.
+  onFieldsChanged: {
+    var at = Model.clampCursor(root.fieldIndex, root.fields.length)
+    if (at !== root.fieldIndex) { root.fieldIndex = at; Qt.callLater(root.focusCurrent) }
+  }
   readonly property var current: fieldIndex >= 0 && fieldIndex < fields.length ? fields[fieldIndex] : null
   readonly property var check: Model.validateForm(form, rows, templates, hostHome)
   // A new permanent VM on a services.nix without the microvm row (#6).
@@ -123,15 +132,23 @@ FocusScope {
     if (item) flick.ensureVisible(item)
   }
 
-  function moveField(delta) {
+  // The one writer for user navigation. Everything that moves the selection --
+  // a key, a click -- goes through here, so leaving a field always marks it
+  // touched and always closes an open picker. Lifecycle writes (begin, submit,
+  // focus sync, the clamp below) are the documented exceptions.
+  function moveFieldTo(index) {
     if (root.current) {
       var t = Object.assign({}, root.touched)
       t[root.current.key] = true
       root.touched = t
     }
     root.listIndex = -1
-    root.fieldIndex = Math.max(0, Math.min(root.fields.length - 1, root.fieldIndex + delta))
+    root.fieldIndex = Model.clampCursor(index, root.fields.length)
     Qt.callLater(root.focusCurrent)
+  }
+
+  function moveField(delta) {
+    root.moveFieldTo(root.fieldIndex + delta)
   }
 
   function activate() {
@@ -263,7 +280,7 @@ FocusScope {
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
         elide: Text.ElideRight
-        width: Math.min(implicitWidth, formColumn.width - Style.space(120))
+        width: Math.max(0, Math.min(implicitWidth, formColumn.width - Style.space(120)))
       }
     }
 
@@ -323,11 +340,11 @@ FocusScope {
 
             MouseArea {
               anchors.fill: parent
-              onClicked: {
-                root.fieldIndex = fieldItem.index
-                root.activate()
-                Qt.callLater(root.focusCurrent)
-              }
+              // Selects, and only selects. It used to call activate() too, so
+              // clicking the Kind row to look at it flipped the form between
+              // disposable and permanent and changed the whole field set.
+              // Space or enter changes a value; a click never does.
+              onClicked: root.moveFieldTo(fieldItem.index)
             }
 
             Column {
@@ -365,7 +382,7 @@ FocusScope {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
-                  width: Math.min(implicitWidth, body.width - Style.space(24))
+                  width: Math.max(0, Math.min(implicitWidth, body.width - Style.space(24)))
                 }
               }
 

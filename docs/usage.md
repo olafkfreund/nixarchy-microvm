@@ -210,8 +210,10 @@ hidden and the footer says so.
 
 ### Delete
 
-`x` asks first, and **Cancel** is the default answer. For a disposable VM it
-deletes the VM and everything in its state directory. For a permanent VM it
+`x` asks first, and **Cancel** is the default answer. Answer from the keyboard
+with `y` or `enter` for yes, `n` or `esc` for no — the question takes the
+keyboard wherever you were, including out of the filter box. For a disposable
+VM it deletes the VM and everything in its state directory. For a permanent VM it
 removes the line from `apps.nix`; the unit and `/var/lib/microvms/<name>` stay
 until you apply, and this plugin never deletes that directory.
 

@@ -51,16 +51,26 @@ var SHORTCUTS = [
 
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "tab", text: "Switch to the next bar panel" },
+  { group: "Panel", keys: "shift+tab", text: "Switch to the previous bar panel" },
   { group: "Panel", keys: "X", text: "Give up on a change stuck over a minute" },
   { group: "Panel", keys: "?", text: "Show this list" },
+  // Two entries, not one: form.test.js caps a key label at 12 characters, and
+  // "y  n  enter  esc" is 16.
+  { group: "Question", keys: "y  enter", text: "Answer yes" },
+  { group: "Question", keys: "n  esc", text: "Answer no (the default)" },
 
   { group: "Form", keys: "tab  ↓", text: "Next field" },
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
+  { group: "Form", keys: "j  k", text: "Move between fields; on a text field they type, so use tab" },
+  { group: "Form", keys: "↓", text: "Open the picker under a template or key field" },
   { group: "Form", keys: "esc", text: "Cancel" },
 
   { group: "Log", keys: "j  k", text: "Scroll (stops following)" },
+  { group: "Log", keys: "↑  ↓", text: "Scroll (stops following)" },
+  { group: "Log", keys: "PageUp  PgDn", text: "Scroll a screenful" },
   { group: "Log", keys: "G  end", text: "Jump to the end and follow" },
   { group: "Log", keys: "esc", text: "Back to the list; the job keeps running" }
 ]
@@ -493,6 +503,42 @@ function rowsFor(rows) {
     out.push(full)
   }
   return out
+}
+
+// Which item owns the keyboard, as a function of state rather than of history.
+// A question owns it wherever focus happened to be, which is the bug: opening a
+// confirmation while the filter had focus left the filter eating y, n, Enter
+// and Escape, so the question could not be answered from the keyboard at all.
+// The commands the review promises to run, in full. It used to slice each argv
+// to four tokens with no ellipsis, so for `nixarchy-pkg opt set <path> <value>`
+// the value -- the entire line being written into apps.nix -- was simply not
+// shown, on a screen whose job is to let the user confirm exactly that.
+//
+// The snippet is rendered as a reference rather than repeated, because the
+// review already prints it in full immediately above; measuring nothing keeps
+// this independent of the card's width.
+function reviewCommandLines(argvs, snippet, optPath) {
+  var out = []
+  var list = argvs || []
+  for (var i = 0; i < list.length; i++) {
+    var argv = list[i] || []
+    var parts = []
+    for (var j = 0; j < argv.length; j++) {
+      var token = String(argv[j])
+      if (j === 0) parts.push(commandName(argv))
+      else if (snippet && token === snippet) parts.push("\u2039the line above\u203a")
+      else parts.push(token)
+    }
+    out.push(parts.join(" "))
+  }
+  return out
+}
+
+function focusTarget(state) {
+  var s = state || {}
+  if (s.confirmOpen) return "confirm"
+  if (s.mode === "log" || s.mode === "form" || s.mode === "review") return s.mode
+  return "list"
 }
 
 function clampCursor(cursorIndex, total) {

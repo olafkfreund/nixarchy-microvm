@@ -80,10 +80,19 @@ FocusScope {
 
   // Deferred, and decided by the mode at the time it runs, so an open that
   // lands straight in the form (IPC create) keeps the form's focus.
+  // Exactly one item holds the keyboard, and which one is a function of state,
+  // never of where focus happened to be. "confirm" and "list" both land on
+  // keyCatcher: the host's ConfirmDialog is a plain Item with no focus property
+  // and no Keys handler, so it cannot hold focus itself. keyCatcher is
+  // focus: true and returns from its own handler while blocked, so the key
+  // bubbles to keyRoot's Keys.onPressed, which feeds confirmDialog.handleKey.
+  // Focusing it is therefore how a question takes the keyboard *away from the
+  // filter*, which is the whole fix.
   function focusForMode() {
-    if (root.mode === "log") logView.forceActiveFocus()
-    else if (root.mode === "form") createForm.focusCurrent()
-    else if (root.mode === "review") review.forceActiveFocus()
+    var target = Model.focusTarget({ mode: root.mode, confirmOpen: root.confirmOpen })
+    if (target === "log") logView.forceActiveFocus()
+    else if (target === "form") createForm.focusCurrent()
+    else if (target === "review") review.forceActiveFocus()
     else keyCatcher.forceActiveFocus()
   }
 
@@ -117,9 +126,13 @@ FocusScope {
     setMode("review")
   }
 
+  // A refused submit changes nothing. It used to clear reviewForm and go back
+  // to the list regardless, so filling out a permanent VM while a build ran
+  // threw every field away and showed a busy notice instead. The footer already
+  // says why, in both the form and the review.
   function submitForm(form) {
+    if (!MicrovmState.submit(form)) return
     root.reviewForm = null
-    MicrovmState.submit(form)
     setMode("list")
   }
 
@@ -188,6 +201,7 @@ FocusScope {
     // ConfirmDialog would otherwise default to its confirm button.
     confirmDialog.selectedIndex = 0
     root.confirmOpen = true
+    Qt.callLater(root.focusForMode)
   }
 
   function askRemove(row) {
@@ -203,6 +217,7 @@ FocusScope {
   function closeConfirm() {
     root.confirmOpen = false
     root.confirmAction = null
+    Qt.callLater(root.focusForMode)
   }
 
   function confirmAccepted() {
@@ -281,6 +296,11 @@ FocusScope {
 
     Keys.onPressed: function(event) {
       if (!root.confirmOpen) return
+      // ConfirmDialog.handleKey knows Escape, Left/Right/Tab/Backtab and
+      // Return/Enter, and nothing else -- there is no y and no n anywhere in
+      // it. The keys the docs promise have to be answered here.
+      if (event.text === "y") { root.confirmAccepted(); event.accepted = true; return }
+      if (event.text === "n") { root.closeConfirm(); event.accepted = true; return }
       if (confirmDialog.handleKey(event)) event.accepted = true
     }
 
@@ -397,8 +417,12 @@ FocusScope {
               createForm.setForm(got.form)
               createForm.reasoning = got.reasoning
               if (got.rejected.length > 0) MicrovmState.agentError = "ignored (wrong type): " + got.rejected.join(", ")
+              // begin() re-establishes the form's own state and defers
+              // focusCurrent itself. It clears attempted, so that is set back
+              // afterwards: the agent's proposal should show its errors
+              // immediately rather than waiting for the user to touch a field.
+              createForm.begin()
               createForm.attempted = true
-              Qt.callLater(createForm.focusCurrent)
             }
           }
         }
@@ -454,12 +478,15 @@ FocusScope {
               width: parent.width
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
-                : "Runs: " + root.reviewArgvs.map(function(a) { return [Model.commandName(a)].concat(a.slice(1, 4)).join(" ") }).join(", then ")
+                : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet,
+                    root.reviewForm ? Model.optPath(root.reviewForm.name) : "").join("\n")
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
+              // A command is one unbroken string; wrapping it anywhere is
+              // better than hiding its tail, which is what truncation did.
+              wrapMode: Text.WrapAnywhere
             }
 
             Text {
@@ -684,6 +711,12 @@ FocusScope {
             id: keysText
             anchors.right: abandonButton.visible ? abandonButton.left : parent.right
             anchors.rightMargin: abandonButton.visible ? Style.spacing.sm : 0
+            // Give way before countsText, which already elides. With assist and
+            // apply both on, the legend was wide enough in a narrow card to
+            // squeeze the counts to zero width, so they vanished rather than
+            // truncating.
+            width: Math.min(implicitWidth, parent.width / 2)
+            elide: Text.ElideRight
             text: MicrovmState.mutating
               ? Model.workingText({ verb: MicrovmState.pendingVerb,
                                     key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",

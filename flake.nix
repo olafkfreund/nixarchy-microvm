@@ -91,6 +91,10 @@
               cp -r ${./tests} tests
               cp ${./Model.js} Model.js
               cp ${./schema.json} schema.json
+              # The keyboard drift alarm scans the QML for bound keys, so the
+              # sandbox has to hold it. Taken from the built package rather than
+              # listed again, so it cannot fall out of step with the files list.
+              cp ${plugin}/*.qml .
               # The harness before the tests: a harness that cannot fail makes
               # every check below it meaningless.
               node tests/selftest.js

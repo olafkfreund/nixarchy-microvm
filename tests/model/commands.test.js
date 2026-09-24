@@ -197,3 +197,30 @@ test("permanentBlocked: a new permanent VM waits for the services row (#6)", () 
   eq(Model.submitArgvs(p, rows, TEMPLATES, HOME, missing), null)
   ok(Model.submitArgvs(pe, rows, TEMPLATES, HOME, Object.assign({}, ALL, { servicesRow: false })))
 })
+
+test("reviewCommandLines shows the whole command (#25)", () => {
+  const SNIP = '{ template = "shell"; autostart = false; memory = 1024; cores = 1; sshPort = null; shares = [ ]; }'
+  const OPT = "programs.nixarchy.services.microvm.machines.p1"
+  const argvs = [
+    ["nixarchy-service-enable", "microvm"],
+    ["/nix/store/abc/nixarchy.pkg/bin/nixarchy-pkg", "opt", "set", OPT, SNIP]
+  ]
+  const lines = Model.reviewCommandLines(argvs, SNIP, OPT)
+  eq(lines.length, 2)
+
+  // Nothing is truncated: every input token survives whole, or is deliberately
+  // replaced. This is the assertion the old slice(0, 4) would have failed.
+  for (const token of argvs[0]) ok(lines[0].indexOf(token) !== -1, token)
+  ok(lines[1].indexOf(OPT) !== -1, "the attribute path is shown in full")
+
+  // The adapter is named for what it is, not by its store path.
+  ok(lines[1].indexOf("nixarchy-pkg opt set") === 0)
+  ok(lines[1].indexOf("/nix/store") === -1)
+
+  // The snippet is referenced, not repeated: the review prints it above.
+  ok(lines[1].indexOf("‹the line above›") !== -1)
+  ok(lines[1].indexOf("template =") === -1)
+
+  eq(Model.reviewCommandLines([], SNIP, OPT), [])
+  eq(Model.reviewCommandLines(null, "", ""), [])
+})
