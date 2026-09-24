@@ -90,6 +90,9 @@
               cp -r ${./tests} tests
               cp ${./Model.js} Model.js
               cp ${./schema.json} schema.json
+              # The harness before the tests: a harness that cannot fail makes
+              # every check below it meaningless.
+              node tests/selftest.js
               node tests/run.js
 
               # The manifest is what the shell validates at load: a typo in it
