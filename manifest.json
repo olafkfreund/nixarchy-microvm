@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "nixarchy.microvm",
   "name": "MicroVMs",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "olafkfreund",
   "license": "MIT",
   "description": "NixOS MicroVMs for Omarchy, on the bar and on a key: disposable VMs from nixarchy vm and permanent machines from programs.nixarchy.services.microvm in one list. Start, stop, open the console, create, edit and delete from the keyboard. A permanent VM becomes one line in apps.nix that you review and then apply yourself. Optional AI assist fills the create form from a sentence.",
