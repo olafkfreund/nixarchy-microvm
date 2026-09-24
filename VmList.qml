@@ -24,6 +24,7 @@ Item {
 
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
 
   readonly property color dim: Qt.darker(foreground, 1.5)
   readonly property int count: rowModel.count
@@ -178,7 +179,7 @@ Item {
             textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize: root.fontSize.body
             font.bold: rowSurface.row.up
             elide: Text.ElideRight
             width: Math.max(0, Math.min(implicitWidth, identity.width - kindBadge.width - Style.spacing.md))
@@ -203,7 +204,7 @@ Item {
               textFormat: Text.PlainText
               color: rowSurface.row.kind === "permanent" ? Color.accent : root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
             }
           }
         }
@@ -216,7 +217,7 @@ Item {
           visible: text !== ""
           color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fontSize.caption
           elide: Text.ElideRight
         }
 
@@ -229,7 +230,7 @@ Item {
           color: rowSurface.rowPending || rowSurface.row.pending ? Color.accent
             : (rowSurface.row.failing ? Color.urgent : root.dim)
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fontSize.caption
           elide: Text.ElideRight
         }
       }
@@ -254,7 +255,7 @@ Item {
             foreground: root.foreground
             hoverColor: modelData.danger ? Color.urgent : root.foreground
             fontFamily: root.fontFamily
-            fontSize: Style.font.iconSmall
+            fontSize: root.fontSize.iconSmall
             size: Style.space(22)
             onClicked: root.actionRequested(rowSurface.row.key, modelData.verb)
           }

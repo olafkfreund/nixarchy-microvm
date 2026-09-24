@@ -138,6 +138,7 @@ Item {
         MicrovmView {
           id: view
           anchors.fill: parent
+          large: true
           foreground: Color.foreground
           fontFamily: Style.font.family
           onCloseRequested: root.close()

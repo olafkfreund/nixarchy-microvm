@@ -62,6 +62,25 @@ FocusScope {
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
 
+  // A full-screen surface is read from further away than a bar popup, so each
+  // text role moves up one rung of the host's own ladder. Not a multiplier: the
+  // rungs all derive from [font] base-size, so the menu tracks the desktop text
+  // size instead of pulling a fixed percentage away from it, and nothing is
+  // magnified after layout.
+  //
+  // caption -> title is required, not chosen. It is what lands this view's text
+  // on the same rung as PanelHero's hardcoded title (:57) and ConfirmDialog's
+  // message (:76-79), which take no size property. Verified on a real display
+  // in nixarchy.devenv with both components unmodified (#27).
+  property bool large: false
+  readonly property var fontSize: root.large
+    ? ({ caption: Style.font.title, body: Style.font.heading,
+         display: Style.font.displayLarge, iconSmall: Style.font.icon,
+         icon: Style.font.display })
+    : ({ caption: Style.font.caption, body: Style.font.body,
+         display: Style.font.display, iconSmall: Style.font.iconSmall,
+         icon: Style.font.icon })
+
   // ------------------------------------------------------------- derivation
 
   readonly property var rows: Model.filterRows(MicrovmState.rows, filterText)
@@ -363,7 +382,7 @@ FocusScope {
             text: Model.Glyph.vm
             color: MicrovmState.counts.failing > 0 ? Color.urgent : root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.display
+            font.pixelSize: root.fontSize.display
           }
 
           trailingControl: Row {
@@ -454,6 +473,7 @@ FocusScope {
           hostHome: MicrovmState.home
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
           thinking: MicrovmState.thinking
           agentError: MicrovmState.agentError
           onSubmitted: function(form) { root.submitForm(form) }
@@ -504,7 +524,7 @@ FocusScope {
               textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: root.fontSize.body
               font.bold: true
             }
 
@@ -513,7 +533,7 @@ FocusScope {
               textFormat: Text.PlainText
               color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
             }
 
             Text {
@@ -521,7 +541,7 @@ FocusScope {
               textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               wrapMode: Text.WrapAnywhere
             }
 
@@ -533,7 +553,7 @@ FocusScope {
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               // A command is one unbroken string; wrapping it anywhere is
               // better than hiding its tail, which is what truncation did.
               wrapMode: Text.WrapAnywhere
@@ -544,7 +564,7 @@ FocusScope {
               textFormat: Text.PlainText
               color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               wrapMode: Text.WordWrap
             }
 
@@ -555,7 +575,7 @@ FocusScope {
               color: root.foreground
               opacity: 0.65
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
             }
           }
         }
@@ -570,6 +590,7 @@ FocusScope {
           exitCode: MicrovmState.streamExit
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
           onBackRequested: root.setMode("list")
         }
 
@@ -586,6 +607,7 @@ FocusScope {
           cursorFromKeyboard: root.cursorFromKeyboard
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
 
           onActionRequested: function(key, verb) { root.dispatch(key, verb) }
           onCursorRequested: function(key) { root.setCursor(key) }
@@ -610,7 +632,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize: root.fontSize.body
             wrapMode: Text.WordWrap
           }
         }
@@ -646,7 +668,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: Color.urgent
             font.family: root.fontFamily
-            font.pixelSize: Style.font.iconSmall
+            font.pixelSize: root.fontSize.iconSmall
           }
 
           Text {
@@ -660,7 +682,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: Color.urgent
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
             wrapMode: Text.WordWrap
           }
 
@@ -673,7 +695,7 @@ FocusScope {
             tooltipText: "Dismiss"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            fontSize: Style.font.iconSmall
+            fontSize: root.fontSize.iconSmall
             size: Style.space(20)
             onClicked: MicrovmState.lastError = ""
           }
@@ -697,7 +719,7 @@ FocusScope {
           textFormat: Text.PlainText
           color: MicrovmState.streaming || root.listActions.apply ? Color.accent : root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fontSize.caption
           wrapMode: Text.WordWrap
         }
 
@@ -716,7 +738,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
           }
 
           // The mouse's way to the same escape the X key offers. Appears only
@@ -753,7 +775,7 @@ FocusScope {
             color: root.foreground
             opacity: 0.65
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
           }
         }
       }
@@ -767,6 +789,7 @@ FocusScope {
       foreground: root.foreground
       background: Color.popups.background
       fontFamily: root.fontFamily
+          fontSize: root.fontSize
       onDismissed: root.helpOpen = false
     }
 

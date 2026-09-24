@@ -17,6 +17,7 @@ FocusScope {
 
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
   readonly property color dim: Qt.darker(foreground, 1.5)
 
   property bool follow: true
@@ -75,7 +76,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.running ? Color.accent : (root.exitCode > 0 ? Color.urgent : root.dim)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.iconSmall
+        font.pixelSize: root.fontSize.iconSmall
       }
 
       Text {
@@ -85,7 +86,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: root.fontSize.body
         elide: Text.ElideRight
       }
 
@@ -95,7 +96,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.running ? Color.accent : (root.exitCode > 0 ? Color.urgent : root.dim)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
       }
     }
 
@@ -118,7 +119,7 @@ FocusScope {
         wrapMode: Text.WrapAnywhere
         color: String(modelData).indexOf("── exit") === 0 ? (root.exitCode > 0 ? Color.urgent : Color.accent) : root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
       }
     }
 
@@ -131,7 +132,7 @@ FocusScope {
       color: root.foreground
       opacity: 0.65
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: root.fontSize.caption
     }
   }
 }

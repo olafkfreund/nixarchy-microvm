@@ -26,6 +26,7 @@ FocusScope {
   property string hostHome: ""
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
   readonly property color dim: Qt.darker(foreground, 1.5)
 
   // A disposable form is created straight away; a permanent one goes to the
@@ -263,7 +264,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: Color.accent
         font.family: root.fontFamily
-        font.pixelSize: Style.font.iconSmall
+        font.pixelSize: root.fontSize.iconSmall
       }
 
       Text {
@@ -272,7 +273,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: root.fontSize.body
         font.bold: true
       }
 
@@ -285,7 +286,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
         elide: Text.ElideRight
         width: Math.max(0, Math.min(implicitWidth, formColumn.width - Style.space(120)))
       }
@@ -376,7 +377,7 @@ FocusScope {
                   color: fieldItem.modelData.widget === "bool" && root.form[fieldItem.modelData.key] === true
                     ? Color.accent : root.dim
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: root.fontSize.body
                 }
 
                 Text {
@@ -387,7 +388,7 @@ FocusScope {
                   textFormat: Text.PlainText
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: root.fontSize.caption
                   elide: Text.ElideRight
                   width: Math.max(0, Math.min(implicitWidth, body.width - Style.space(24)))
                 }
@@ -400,7 +401,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: Color.urgent
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
 
@@ -411,7 +412,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: fieldItem.isCurrent ? root.foreground : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
               }
 
               TextField {
@@ -421,7 +422,7 @@ FocusScope {
                 enabled: !fieldItem.inert
                 foreground: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 placeholderText: fieldItem.modelData.hint || ""
                 Component.onCompleted: if (fieldItem.takesText) text = String(root.form[fieldItem.modelData.key] || "")
                 onTextEdited: {
@@ -453,7 +454,7 @@ FocusScope {
                     textFormat: Text.PlainText
                     color: index === root.listIndex ? Color.accent : root.dim
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: root.fontSize.caption
                     elide: Text.ElideRight
 
                     MouseArea {
@@ -473,7 +474,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: root.agentError !== "" && !root.thinking ? Color.urgent : (root.thinking ? Color.accent : root.dim)
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
 
@@ -486,7 +487,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: fieldItem.error !== "" ? Color.urgent : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
             }
@@ -514,7 +515,7 @@ FocusScope {
       color: root.foreground
       opacity: 0.65
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: root.fontSize.caption
     }
   }
 }

@@ -14,6 +14,7 @@ Item {
   property color foreground: Color.foreground
   property color background: Color.popups.background
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
 
   readonly property color dim: Qt.darker(foreground, 1.5)
 
@@ -61,7 +62,7 @@ Item {
             textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.icon
+            font.pixelSize: root.fontSize.icon
           }
 
           Text {
@@ -70,7 +71,7 @@ Item {
             textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
             font.bold: true
             font.letterSpacing: 1.2
           }
@@ -112,7 +113,7 @@ Item {
                   textFormat: Text.PlainText
                   color: Color.accent
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: root.fontSize.caption
                   elide: Text.ElideRight
                 }
 
@@ -126,7 +127,7 @@ Item {
                   textFormat: Text.PlainText
                   color: root.dim
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: root.fontSize.caption
                   elide: Text.ElideRight
                 }
               }
@@ -142,7 +143,7 @@ Item {
           textFormat: Text.PlainText
           color: root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fontSize.caption
         }
       }
     }
