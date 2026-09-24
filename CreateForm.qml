@@ -12,8 +12,9 @@ import "Model.js" as Model
 // arrows, Enter and Esc mean the same thing everywhere.
 //
 // No Popup anywhere: the template and key pickers are inline lists under
-// their field. A Popup is reparented to the overlay and would ignore the
-// menu's scale.
+// their field. That is a choice about behaviour, not a workaround -- an inline
+// list scrolls with the form, keeps the keyboard model uniform, and cannot be
+// clipped by a surface it does not know about.
 FocusScope {
   id: root
 
@@ -25,6 +26,7 @@ FocusScope {
   property string hostHome: ""
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
   readonly property color dim: Qt.darker(foreground, 1.5)
 
   // A disposable form is created straight away; a permanent one goes to the
@@ -72,7 +74,12 @@ FocusScope {
   readonly property var keyChoices: keysMatching(form.sshKey).slice(0, 6)
   readonly property string title: form.editing ? "Edit " + form.name : "New VM"
 
-  implicitHeight: formColumn.implicitHeight
+  // The fixed parts, and then whatever the fields need. formColumn is no longer
+  // read for a natural height: it is anchors.fill, so reading it would be
+  // reading the height we were given.
+  readonly property int formChrome: headerRow.implicitHeight + hints.implicitHeight
+    + formColumn.spacing * 2
+  implicitHeight: formChrome + fieldsColumn.implicitHeight
 
   function keysMatching(typed) {
     var q = String(typed || "").toLowerCase()
@@ -247,6 +254,7 @@ FocusScope {
     spacing: Style.spacing.md
 
     Row {
+      id: headerRow
       width: parent.width
       spacing: Style.spacing.md
 
@@ -256,7 +264,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: Color.accent
         font.family: root.fontFamily
-        font.pixelSize: Style.font.iconSmall
+        font.pixelSize: root.fontSize.iconSmall
       }
 
       Text {
@@ -265,7 +273,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: root.fontSize.body
         font.bold: true
       }
 
@@ -278,7 +286,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
         elide: Text.ElideRight
         width: Math.max(0, Math.min(implicitWidth, formColumn.width - Style.space(120)))
       }
@@ -287,7 +295,7 @@ FocusScope {
     Flickable {
       id: flick
       width: parent.width
-      height: Math.min(fieldsColumn.implicitHeight, Style.space(400))
+      height: Math.max(0, root.height - root.formChrome)
       contentHeight: fieldsColumn.implicitHeight
       clip: true
       boundsBehavior: Flickable.StopAtBounds
@@ -369,7 +377,7 @@ FocusScope {
                   color: fieldItem.modelData.widget === "bool" && root.form[fieldItem.modelData.key] === true
                     ? Color.accent : root.dim
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
+                  font.pixelSize: root.fontSize.body
                 }
 
                 Text {
@@ -380,7 +388,7 @@ FocusScope {
                   textFormat: Text.PlainText
                   color: root.foreground
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: root.fontSize.caption
                   elide: Text.ElideRight
                   width: Math.max(0, Math.min(implicitWidth, body.width - Style.space(24)))
                 }
@@ -393,7 +401,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: Color.urgent
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
 
@@ -404,7 +412,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: fieldItem.isCurrent ? root.foreground : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
               }
 
               TextField {
@@ -414,7 +422,7 @@ FocusScope {
                 enabled: !fieldItem.inert
                 foreground: root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 placeholderText: fieldItem.modelData.hint || ""
                 Component.onCompleted: if (fieldItem.takesText) text = String(root.form[fieldItem.modelData.key] || "")
                 onTextEdited: {
@@ -446,7 +454,7 @@ FocusScope {
                     textFormat: Text.PlainText
                     color: index === root.listIndex ? Color.accent : root.dim
                     font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: root.fontSize.caption
                     elide: Text.ElideRight
 
                     MouseArea {
@@ -466,7 +474,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: root.agentError !== "" && !root.thinking ? Color.urgent : (root.thinking ? Color.accent : root.dim)
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
 
@@ -479,7 +487,7 @@ FocusScope {
                 textFormat: Text.PlainText
                 color: fieldItem.error !== "" ? Color.urgent : root.dim
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
               }
             }
@@ -489,6 +497,7 @@ FocusScope {
     }
 
     Text {
+      id: hints
       width: parent.width
       horizontalAlignment: Text.AlignRight
       text: {
@@ -506,7 +515,7 @@ FocusScope {
       color: root.foreground
       opacity: 0.65
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: root.fontSize.caption
     }
   }
 }

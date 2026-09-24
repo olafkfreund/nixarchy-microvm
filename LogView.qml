@@ -17,13 +17,21 @@ FocusScope {
 
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
+  property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
   readonly property color dim: Qt.darker(foreground, 1.5)
 
   property bool follow: true
 
   signal backRequested()
 
-  implicitHeight: header.implicitHeight + Style.spacing.md + logList.height + Style.spacing.md + hint.implicitHeight
+  // logChrome and a requested height, not logList.height: reading the list's
+  // assigned height here is the back edge that turns the whole graph cyclic,
+  // because that height now comes from ours. 340 survives with a new meaning --
+  // the height the log asks for when nobody has told it how much it may have,
+  // rather than a cap it can never exceed.
+  readonly property int logChrome: header.implicitHeight + hint.implicitHeight
+    + Style.spacing.md * 2
+  implicitHeight: logChrome + Style.space(340)
 
   function toEnd() {
     root.follow = true
@@ -68,7 +76,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.running ? Color.accent : (root.exitCode > 0 ? Color.urgent : root.dim)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.iconSmall
+        font.pixelSize: root.fontSize.iconSmall
       }
 
       Text {
@@ -78,7 +86,7 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: root.fontSize.body
         elide: Text.ElideRight
       }
 
@@ -88,14 +96,14 @@ FocusScope {
         textFormat: Text.PlainText
         color: root.running ? Color.accent : (root.exitCode > 0 ? Color.urgent : root.dim)
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
       }
     }
 
     ListView {
       id: logList
       width: parent.width
-      height: Style.space(340)
+      height: root.height > 0 ? Math.max(0, root.height - root.logChrome) : Style.space(340)
       clip: true
       boundsBehavior: Flickable.StopAtBounds
       model: root.lines
@@ -111,7 +119,7 @@ FocusScope {
         wrapMode: Text.WrapAnywhere
         color: String(modelData).indexOf("── exit") === 0 ? (root.exitCode > 0 ? Color.urgent : Color.accent) : root.dim
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: root.fontSize.caption
       }
     }
 
@@ -124,7 +132,7 @@ FocusScope {
       color: root.foreground
       opacity: 0.65
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: root.fontSize.caption
     }
   }
 }

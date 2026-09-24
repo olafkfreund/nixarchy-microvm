@@ -505,6 +505,28 @@ function rowsFor(rows) {
   return out
 }
 
+// ---------------------------------------------------------------- layout
+//
+// Style.space() is a rem unit: it tracks the desktop text size and knows
+// nothing about the screen. These two turn what the host offers into what a
+// surface may take, so the card follows the monitor and the body follows the
+// card.
+
+// A card width: a fraction of what the host offers, held between a floor and a
+// ceiling that are themselves Style.space() values, so text size still counts.
+function cardWidth(available, fraction, min, max) {
+  var lo = Math.min(min, max)
+  var hi = Math.max(min, max)
+  if (!(available > 0)) return lo
+  return Math.max(lo, Math.min(hi, Math.round(available * fraction)))
+}
+
+// What is left for the scrolling part once the fixed chrome has its share.
+function bodyBudget(total, chrome) {
+  if (!(total > 0)) return 0
+  return Math.max(0, total - chrome)
+}
+
 // Which item owns the keyboard, as a function of state rather than of history.
 // A question owns it wherever focus happened to be, which is the bug: opening a
 // confirmation while the filter had focus left the filter eating y, n, Enter

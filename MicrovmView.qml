@@ -19,7 +19,23 @@ FocusScope {
   // would restore whichever child held focus last, stale filter field included.
   readonly property alias keyTarget: keyCatcher
 
-  implicitHeight: column.implicitHeight
+  // The binding graph, one way only. Left of the arrow is natural height, which
+  // names content implicitHeights and Style tokens; right is assigned height,
+  // which names root.height and its descendants. No identifier is in both, so
+  // there is no back edge:
+  //   header/footer/bodyNatural -> implicitHeight -> host -> root.height
+  //     -> bodyHeight -> body.height -> each body child
+  readonly property int chromeHeight: headerBlock.implicitHeight
+    + footerBlock.implicitHeight + Style.spacing.panelGap * 2
+  readonly property int bodyNatural: root.mode === "form" ? createForm.implicitHeight
+    : root.mode === "log" ? logView.implicitHeight
+    : root.mode === "review" ? review.implicitHeight
+    : list.implicitHeight + (emptyState.visible ? emptyState.implicitHeight : 0)
+  implicitHeight: chromeHeight + bodyNatural
+  // 0 before the host has sized us -- first frame, and the keep-loaded reopen --
+  // so the view falls back to its natural height exactly as it did before.
+  readonly property int bodyHeight: root.height > 0
+    ? Model.bodyBudget(root.height, chromeHeight) : bodyNatural
 
   signal closeRequested()
   signal switchPanelRequested(int direction)
@@ -45,6 +61,25 @@ FocusScope {
   property string cursorKey: ""
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
+
+  // A full-screen surface is read from further away than a bar popup, so each
+  // text role moves up one rung of the host's own ladder. Not a multiplier: the
+  // rungs all derive from [font] base-size, so the menu tracks the desktop text
+  // size instead of pulling a fixed percentage away from it, and nothing is
+  // magnified after layout.
+  //
+  // caption -> title is required, not chosen. It is what lands this view's text
+  // on the same rung as PanelHero's hardcoded title (:57) and ConfirmDialog's
+  // message (:76-79), which take no size property. Verified on a real display
+  // in nixarchy.devenv with both components unmodified (#27).
+  property bool large: false
+  readonly property var fontSize: root.large
+    ? ({ caption: Style.font.title, body: Style.font.heading,
+         display: Style.font.displayLarge, iconSmall: Style.font.icon,
+         icon: Style.font.display })
+    : ({ caption: Style.font.caption, body: Style.font.body,
+         display: Style.font.display, iconSmall: Style.font.iconSmall,
+         icon: Style.font.icon })
 
   // ------------------------------------------------------------- derivation
 
@@ -327,9 +362,13 @@ FocusScope {
       onTabRequested: function(direction) { root.switchPanelRequested(direction) }
       onTextKey: function(text) { root.handleTextKey(text) }
 
+      // Three blocks, not a Column: the header and the footer take their
+      // natural heights at the top and bottom, and the body gets whatever is
+      // left. That is what lets the view consume the height its host gives it
+      // instead of only reporting the height its content wants.
       Column {
-        id: column
-        anchors.fill: parent
+        id: headerBlock
+        anchors { top: parent.top; left: parent.left; right: parent.right }
         spacing: Style.spacing.panelGap
 
         PanelHero {
@@ -343,7 +382,7 @@ FocusScope {
             text: Model.Glyph.vm
             color: MicrovmState.counts.failing > 0 ? Color.urgent : root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.display
+            font.pixelSize: root.fontSize.display
           }
 
           trailingControl: Row {
@@ -386,11 +425,47 @@ FocusScope {
           }
         }
 
+        TextField {
+          id: filterField
+          visible: root.mode === "list"
+          width: parent.width
+          foreground: root.foreground
+          // The operator stays on the first line: a line that ends on a
+          // complete expression gets a semicolon inserted for it, and the
+          // rest of the binding is quietly dropped.
+          placeholderText: Model.Glyph.search + "  Filter VMs" +
+            (activeFocus ? "" : "   /")
+          onTextChanged: {
+            root.filterText = text
+            root.cursorIndex = 0
+            root.cursorKey = ""
+          }
+          Keys.onEscapePressed: {
+            if (text.length > 0) text = ""
+            else keyCatcher.forceActiveFocus()
+          }
+          Keys.onDownPressed: {
+            keyCatcher.forceActiveFocus()
+            root.moveCursor(0)
+          }
+        }
+      }
+
+      Item {
+        id: body
+        clip: true
+        height: root.bodyHeight
+        anchors {
+          top: headerBlock.bottom
+          topMargin: Style.spacing.panelGap
+          left: parent.left
+          right: parent.right
+        }
+
         CreateForm {
           id: createForm
           visible: root.mode === "form"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           rows: MicrovmState.allRows
           templates: MicrovmState.templates
           sshKeys: MicrovmState.sshKeys
@@ -398,6 +473,7 @@ FocusScope {
           hostHome: MicrovmState.home
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
           thinking: MicrovmState.thinking
           agentError: MicrovmState.agentError
           onSubmitted: function(form) { root.submitForm(form) }
@@ -431,8 +507,7 @@ FocusScope {
         FocusScope {
           id: review
           visible: root.mode === "review"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           implicitHeight: reviewColumn.implicitHeight
 
           Keys.onPressed: function(event) {
@@ -442,40 +517,35 @@ FocusScope {
 
           Column {
             id: reviewColumn
-            width: parent.width
             spacing: Style.spacing.md
 
             Text {
-              width: parent.width
               text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
               textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: root.fontSize.body
               font.bold: true
             }
 
             Text {
-              width: parent.width
               text: "This line goes into ~/.config/nixarchy/apps.nix:"
               textFormat: Text.PlainText
               color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
             }
 
             Text {
-              width: parent.width
               text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
               textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               wrapMode: Text.WrapAnywhere
             }
 
             Text {
-              width: parent.width
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
                 : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet,
@@ -483,31 +553,29 @@ FocusScope {
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               // A command is one unbroken string; wrapping it anywhere is
               // better than hiding its tail, which is what truncation did.
               wrapMode: Text.WrapAnywhere
             }
 
             Text {
-              width: parent.width
               text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
               textFormat: Text.PlainText
               color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
               wrapMode: Text.WordWrap
             }
 
             Text {
-              width: parent.width
               horizontalAlignment: Text.AlignRight
               text: "enter write it   esc back to the form"
               textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.65
               font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
+              font.pixelSize: root.fontSize.caption
             }
           }
         }
@@ -515,46 +583,21 @@ FocusScope {
         LogView {
           id: logView
           visible: root.mode === "log"
-          width: parent.width
-          height: visible ? implicitHeight : 0
+          anchors.fill: parent
           lines: MicrovmState.log
           title: MicrovmState.streamTitle
           running: MicrovmState.streaming
           exitCode: MicrovmState.streamExit
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
           onBackRequested: root.setMode("list")
-        }
-
-        TextField {
-          id: filterField
-          visible: root.mode === "list"
-          width: parent.width
-          foreground: root.foreground
-          // The operator stays on the first line: a line that ends on a
-          // complete expression gets a semicolon inserted for it, and the
-          // rest of the binding is quietly dropped.
-          placeholderText: Model.Glyph.search + "  Filter VMs" +
-            (activeFocus ? "" : "   /")
-          onTextChanged: {
-            root.filterText = text
-            root.cursorIndex = 0
-            root.cursorKey = ""
-          }
-          Keys.onEscapePressed: {
-            if (text.length > 0) text = ""
-            else keyCatcher.forceActiveFocus()
-          }
-          Keys.onDownPressed: {
-            keyCatcher.forceActiveFocus()
-            root.moveCursor(0)
-          }
         }
 
         VmList {
           id: list
           visible: root.mode === "list"
-          width: parent.width
+          anchors.fill: parent
           rows: root.rows
           features: root.features
           pendingKey: MicrovmState.pendingKey
@@ -564,20 +607,21 @@ FocusScope {
           cursorFromKeyboard: root.cursorFromKeyboard
           foreground: root.foreground
           fontFamily: root.fontFamily
+          fontSize: root.fontSize
 
           onActionRequested: function(key, verb) { root.dispatch(key, verb) }
           onCursorRequested: function(key) { root.setCursor(key) }
         }
 
         Column {
+          id: emptyState
           visible: root.mode === "list" && list.count === 0
-          width: parent.width
+          anchors.fill: parent
           spacing: Style.spacing.sm
           topPadding: Style.spacing.lg
           bottomPadding: Style.spacing.lg
 
           Text {
-            width: parent.width
             horizontalAlignment: Text.AlignHCenter
             text: Model.emptyText({
               everLoaded: MicrovmState.everLoaded,
@@ -588,16 +632,21 @@ FocusScope {
             textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize: root.fontSize.body
             wrapMode: Text.WordWrap
           }
         }
+      }
+
+      Column {
+        id: footerBlock
+        anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+        spacing: Style.spacing.panelGap
 
         // ------------------------------------------------------------ footer
         //
         // nixarchy-pkg's shape: a hairline, then one line for whatever went
         // wrong or is running, then counts on the left and keys on the right.
-
         Rectangle {
           width: parent.width
           height: Math.max(1, Style.space(1))
@@ -619,7 +668,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: Color.urgent
             font.family: root.fontFamily
-            font.pixelSize: Style.font.iconSmall
+            font.pixelSize: root.fontSize.iconSmall
           }
 
           Text {
@@ -633,7 +682,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: Color.urgent
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
             wrapMode: Text.WordWrap
           }
 
@@ -646,7 +695,7 @@ FocusScope {
             tooltipText: "Dismiss"
             foreground: root.foreground
             fontFamily: root.fontFamily
-            fontSize: Style.font.iconSmall
+            fontSize: root.fontSize.iconSmall
             size: Style.space(20)
             onClicked: MicrovmState.lastError = ""
           }
@@ -670,7 +719,7 @@ FocusScope {
           textFormat: Text.PlainText
           color: MicrovmState.streaming || root.listActions.apply ? Color.accent : root.dim
           font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: root.fontSize.caption
           wrapMode: Text.WordWrap
         }
 
@@ -689,7 +738,7 @@ FocusScope {
             textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
           }
 
           // The mouse's way to the same escape the X key offers. Appears only
@@ -726,7 +775,7 @@ FocusScope {
             color: root.foreground
             opacity: 0.65
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fontSize.caption
           }
         }
       }
@@ -740,6 +789,7 @@ FocusScope {
       foreground: root.foreground
       background: Color.popups.background
       fontFamily: root.fontFamily
+          fontSize: root.fontSize
       onDismissed: root.helpOpen = false
     }
 

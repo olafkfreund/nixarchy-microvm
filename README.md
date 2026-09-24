@@ -54,6 +54,14 @@ The walkthrough, from install to troubleshooting, is
 - **One change at a time.** While a start, stop, delete, create or edit runs,
   every other change is refused with a reason, from either surface.
 
+## Size and text
+
+Both surfaces derive their card from the screen they open on and from the
+desktop text size (`omarchy-display-text-size`), and the body fills whatever
+the card leaves, so a long list or a long build log uses the height that is
+actually there. The menu is drawn unscaled: no render transform, so its text is
+as sharp as everything else.
+
 ## Keyboard
 
 The same list is on the `?` sheet inside the panel (`Model.SHORTCUTS`). A key

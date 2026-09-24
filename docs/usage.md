@@ -94,10 +94,19 @@ Buttons on the right of each row do the same as the keys. A key that does not
 apply to a row is not there, and the line above the footer says why, for
 example "enter: set an SSH port and key to get a console".
 
+### Size and text
+
+Both surfaces size themselves from the screen they open on and from your
+desktop text size, so a wider monitor gets a wider card and a longer list, and
+`omarchy-display-text-size` moves everything together. The menu is not
+magnified: its text is laid out at the size it is drawn, so it stays as sharp
+as the rest of the desktop. If you want it bigger, raise the desktop text size
+rather than looking for a setting here.
+
 ## The full-screen menu
 
-The menu has the same list, form and log, drawn larger. It opens over whatever
-you were working in and holds the keyboard until you close it:
+The menu has the same list, form and log, on a bigger card. It opens over
+whatever you were working in and holds the keyboard until you close it:
 
 ```bash
 omarchy-shell shell toggle nixarchy.microvm '{}'
