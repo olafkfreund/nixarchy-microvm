@@ -34,6 +34,7 @@ Panel {
 
   onRefreshIntervalSecChanged: pushSettings()
   onShowStoppedChanged: pushSettings()
+  onHideWhenEmptyChanged: pushSettings()
   onAiAssistChanged: pushSettings()
 
   Component.onCompleted: {
