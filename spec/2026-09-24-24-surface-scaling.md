@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 24
 intent: intent/2026-09-24-24-surface-scaling.md
 ---
