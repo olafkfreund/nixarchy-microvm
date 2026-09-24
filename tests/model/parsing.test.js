@@ -68,11 +68,6 @@ test("parsePending takes nixarchy-pkg's answer and nothing else", () => {
   eq(Model.parsePending(JSON.stringify({ ok: true, changes: [{ marker: "opt:services.foo" }] })).machines, {})
 })
 
-test("parseJsonLines keeps object lines and skips noise and broken JSON", () => {
-  const raw = '{"ok":true}\nWARN something\n{broken\n\n{"ok":false}\n'
-  eq(Model.parseJsonLines(raw), [{ ok: true }, { ok: false }])
-  eq(Model.parseJsonLines(undefined), [])
-})
 
 test("stripAnsi removes colour, OSC and \\r redraws", () => {
   eq(Model.stripAnsi("\x1b[32m [ OK ]\x1b[0m done"), " [ OK ] done")

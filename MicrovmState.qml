@@ -148,7 +148,6 @@ Singleton {
 
   property var log: []
   property string streamTitle: ""
-  property string streamKey: ""
   property int streamExit: -1
   readonly property bool streaming: streamProcess.running
 
@@ -210,15 +209,6 @@ Singleton {
     return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + root.pendingKey.split(":")[1] : "") + " — wait for it to finish"
   }
 
-  // Only rows the lists reported. A name typed from outside (IPC) that is
-  // not in the list never reaches a command.
-  function known(kind, name) {
-    var row = Model.rowByName(root.allRows, kind, name)
-    if (row) return row
-    root.lastError = "No " + kind + " VM called " + name
-    return null
-  }
-
   function launch(proc, argv) {
     root.pendingCommand = Model.commandName(argv)
     root.escapable = false
@@ -257,7 +247,7 @@ Singleton {
   function start(row) {
     if (!allowed(row, "start")) return false
     if (row.kind === "permanent") return run([Model.unitArgv("start", row.name)], "starting", row.key)
-    return startStream(Model.runDetachArgv(row.name), "run " + row.name, row.key)
+    return startStream(Model.runDetachArgv(row.name), "run " + row.name)
   }
 
   function stop(row) {
@@ -283,23 +273,39 @@ Singleton {
     return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
   }
 
-  function startStream(argv, title, key) {
+  function startStream(argv, title) {
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argv) return false
     root.lastError = ""
     root.streamTitle = title
-    root.streamKey = key || ""
     root.streamExit = -1
     root.log = ["$ " + title]
+    root.pendingLines = []
     root.launch(streamProcess, argv)
     return true
   }
 
+  // A nix build emits thousands of lines. Appending each one reassigned a var
+  // property and copied the whole capped array, so every line cost a full
+  // LogView model invalidation. Buffer the raw lines and merge once per tick.
+  property var pendingLines: []
+
   function appendLog(line) {
-    var next = root.log.slice()
-    next.push(Model.capLine(Model.stripAnsi(line)))
-    if (next.length > 400) next.splice(0, next.length - 400)
-    root.log = next
+    root.pendingLines.push(line)
+    Qt.callLater(root.flushLog)
+  }
+
+  // Qt.callLater defers past the current script execution, so a scheduled flush
+  // can never run *between* two synchronous emissions from one C++ call.
+  // Process::onFinished emits streamEnded (hence onRead, hence appendLog, hence
+  // only a scheduled flush) and then exited, both inside itself -- so when
+  // onExited runs, the tail line is still buffered and its direct flushLog()
+  // drains the tail and the marker in order. The scheduled call fires later and
+  // returns early.
+  function flushLog() {
+    if (root.pendingLines.length === 0) return
+    root.log = Model.capLog(root.log, root.pendingLines)
+    root.pendingLines = []
   }
 
   // A queue with nothing running is a hold no exit will ever release: the
@@ -660,6 +666,11 @@ Singleton {
 
   Process {
     id: streamProcess
+    // The tail of a build that died mid-line is not lost: Process::onFinished
+    // calls streamEnded() on both parsers before it emits exited
+    // (quickshell src/io/process.cpp:274-282), and SplitParser::streamEnded
+    // emits any non-empty buffer (src/io/datastream.cpp:97-99). So the fragment
+    // arrives here, and only then does onExited append the marker.
     stdout: SplitParser { onRead: function(line) { root.appendLog(line) } }
     stderr: SplitParser { onRead: function(line) { root.appendLog(line) } }
 
@@ -667,6 +678,7 @@ Singleton {
       root.clearBusyNotice()
       root.streamExit = code
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
+      root.flushLog()
       if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
       if (root.active || root.background) root.refresh()
     }

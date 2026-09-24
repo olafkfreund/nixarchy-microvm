@@ -154,6 +154,21 @@ function capLine(line) {
   return text.length > LINE_CAP ? text.substring(0, LINE_CAP - 1) + "…" : text
 }
 
+var LOG_CAP = 400
+
+// The log's whole growth rule in one place: clean each incoming line, append,
+// keep the last LOG_CAP. `existing` arrives as a Qt sequence wrapper, so it is
+// walked by index -- never concat, never Array.isArray (AGENTS.md). Pure: it
+// returns a new plain array and never touches root.log.
+function capLog(existing, incoming) {
+  var out = []
+  var have = existing || []
+  for (var i = 0; i < have.length; i++) out.push(have[i])
+  var add = incoming || []
+  for (var j = 0; j < add.length; j++) out.push(capLine(stripAnsi(add[j])))
+  return out.length > LOG_CAP ? out.slice(out.length - LOG_CAP) : out
+}
+
 // ---------------------------------------------------------------- identifiers
 
 var KINDS = ["disposable", "permanent"]
@@ -188,19 +203,6 @@ function optPath(name) {
 
 // ---------------------------------------------------------------- parsing
 
-function parseJsonLines(raw) {
-  var lines = String(raw || "").split("\n")
-  var out = []
-  for (var i = 0; i < lines.length; i++) {
-    var line = trim(lines[i])
-    if (line.charAt(0) !== "{") continue
-    try {
-      out.push(JSON.parse(line))
-    } catch (e) {
-    }
-  }
-  return out
-}
 
 // `[` first means the JSON the upstream PR adds; anything else is today's
 // text. The caller learns which it got from `isJsonList`.
@@ -650,10 +652,9 @@ function reconcilePlan(currentKeys, nextRows) {
 
 function counts(rows) {
   var list = rows || []
-  var out = { total: list.length, running: 0, stopped: 0, failing: 0, pending: 0 }
+  var out = { total: list.length, running: 0, failing: 0, pending: 0 }
   for (var i = 0; i < list.length; i++) {
     if (list[i].runtime === "running") out.running++
-    else out.stopped++
     if (list[i].runtime === "failed") out.failing++
     if (list[i].pending) out.pending++
   }
