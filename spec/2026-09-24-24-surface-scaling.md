@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 24
 intent: intent/2026-09-24-24-surface-scaling.md
 ---
@@ -315,14 +315,22 @@ Concretely:
 - #25's verification "at 456 px and at 1.45×" (`spec/2026-09-24-25-view-and-form.md:91,223`)
   is wrong after this lands — there is no 1.45×, and 456 px is one monitor at one
   text size. #25 is being amended in parallel to drop it.
-- #25's `Math.max(0, …)` width guards are **superseded, not coexistent**. They sit
-  on `VmList.qml:185`, `CreateForm.qml:266`, `CreateForm.qml:368` and
-  `LogView.qml:76` — lines this issue rewrites. §1 and §3 remove the subtraction
-  that can go negative (`identity` is sized from a budget instead of
-  `Math.min(implicitWidth, parent − constant)`), so the guard becomes a token on an
-  expression that no longer exists. Removing them along with the arithmetic is
-  correct; removing them without replacing the arithmetic is not, which is why the
-  ruling gives this spec the rework and #25 the interim.
+- #25's `Math.max(0, …)` width guards **stay, and coexist with this rework**. An
+  earlier version of this section claimed they were superseded because §1 and §3
+  remove the subtraction that can go negative. That was wrong, and checking the
+  four sites shows why: `VmList.qml:185` is
+  `Math.min(implicitWidth, identity.width − kindBadge.width − Style.spacing.md)`,
+  `CreateForm.qml:266` subtracts from `formColumn.width`, `:368` from `body.width`,
+  and `LogView.qml:76` from `parent.width`. §1 changes heights and §3 changes the
+  two card widths; neither rewrites any of those four expressions. This section's
+  own next sentence already said removing the guards without replacing the
+  arithmetic is not correct — and since the arithmetic is not replaced, the guards
+  are what holds the invariant.
+
+  So the ruling narrows: this spec owns the layout contract and the 1.45×
+  removal, and #25 keeps findings 7 and 8. If a later change does replace one of
+  those four expressions with a budget, the guard on that line goes with it, in
+  that change.
 - This spec adopts #25's invariant unchanged: **no width expression in either
   surface may evaluate below zero at a 456 px card** — and meets it in the stronger
   form that a negative width becomes unreachable rather than clamped.
