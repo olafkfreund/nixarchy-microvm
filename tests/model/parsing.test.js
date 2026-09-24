@@ -148,3 +148,18 @@ test("names from Object.prototype are rows, not prototype members (#22)", () => 
   eq(Object.prototype.pending, undefined)
   eq(({}).constructor.runtime, undefined)
 })
+
+test("sanitize drops the code points that reorder text (#37)", () => {
+  // U+202E renders "rm <override>gnp.txt" as "rm txt.png" — a line that lies.
+  eq(Model.errorText("error: rm ‮gnp.txt"), "rm gnp.txt")
+  for (const cp of ["‪", "‫", "‬", "‭", "‮",
+                    "⁦", "⁧", "⁨", "⁩"]) {
+    eq(Model.sanitize("a" + cp + "b", 64), "ab")
+  }
+  // Separators break a one-line field into two.
+  eq(Model.sanitize("a b", 64), "ab")
+  eq(Model.sanitize("a b", 64), "ab")
+  // Kept on purpose: these mark direction and cannot reorder.
+  eq(Model.sanitize("a‎b", 64), "a‎b")
+  eq(Model.sanitize("a‏b", 64), "a‏b")
+})

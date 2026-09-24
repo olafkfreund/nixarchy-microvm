@@ -217,6 +217,26 @@ test("listActions hides assist when the schema could not be read (#23)", () => {
   ok(!Model.listActions({ agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
 })
 
+test("a name the writers cannot emit is listed, not editable (#38)", () => {
+  const P = "programs.nixarchy.services.microvm.machines."
+  const body = '{ template = "shell"; autostart = false; memory = 1024; cores = 1; ' +
+    'sshPort = null; shares = [ ]; }'
+  const line = (n) => "  " + P + n + " = " + body + ";  #@opt " + P + n
+  const at = (n) => Model.parseMachineLines(line(n)).filter(m => m.name === n)[0]
+
+  // A valid name with a valid body is ours to edit, as before.
+  eq(at("p1").ownership, "managed")
+
+  // A leading digit is not a name any writer will emit, so the row must not
+  // offer an edit or a remove it cannot carry out.
+  eq(at("9x").ownership, "managed-unsupported")
+  ok(at("9x").fields, "its fields are still parsed, so the row shows the template")
+  eq(at("9x").fields.template, "shell")
+
+  // a_b is valid Nix and stays fully managed.
+  eq(at("a_b").ownership, "managed")
+})
+
 test("capLog merges, caps each line and keeps the last 400 (#39)", () => {
   // The whole growth rule, in the one place that owns it.
   eq(Model.capLog([], ["a"]), ["a"])
