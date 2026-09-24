@@ -22,8 +22,9 @@ The approved decisions, carried over so this file stands alone:
   three; `report()` alone cannot tell three failures from one.
 - **The files-list check uses a root deny-list**, not an extension allow-list, so it fails
   closed: an unrecognised new root file breaks the build until someone classifies it.
-- **The pacman check scans the whole clone**, with a per-line allow-list at
-  `tests/pacman-allowed.txt` holding the ten real rule-text lines, and `grep -I` for the
+- **The pacman check scans every tracked file except `intent/`, `spec/` and `plan/`**,
+  with a per-line allow-list at `tests/pacman-allowed.txt` holding the five real
+  rule-text lines, and `grep -I` for the
   binaries under `docs/img/`.
 - **`omarchy plugin validate` is not faked** — no runner has the omarchy tooling. CI keeps
   the symlink check and gains the files-list check through `nix flake check`; the
@@ -104,15 +105,18 @@ silently, and the whole point of this issue is that a failing check must fail th
    The allow-list and the widening land in the **same commit** — widening first would
    flag the repository's own rule text and the check would land red, which the spec
    forbids. Format: one trimmed source line per line, `#`-prefixed lines and blanks
-   ignored, matched with `grep -qxF`. Its ten entries are the trimmed text of
-   `AGENTS.md:57` and `:168`, `README.md:236`, `flake.nix:138`, `ci.yml:18`,
-   `intent/2026-09-18-1-microvm-plugin.md:92`, `spec/2026-09-18-1-microvm-plugin.md:459`
-   and `plan/2026-09-18-1-microvm-plugin.md:172`, `:354`, `:550` — confirmed today with
-   `git ls-files -z | xargs -0 grep -Inw -E 'pacman|yay'`. `flake.nix:137-140` becomes:
+   ignored, matched with `grep -qxF`. Its five entries are the trimmed text of
+   `AGENTS.md:57` and `:168`, `README.md:236`, `flake.nix:138` and `ci.yml:18` —
+   confirmed today with `git ls-files -z | xargs -0 grep -Inw -E 'pacman|yay'`, which
+   reports 39 lines across the tree, 34 of them inside the three artifact directories
+   (29 in this task's own three files). Those directories are excluded as a class,
+   not allow-listed: they are design history quoting the rule, and the set grows with
+   every future task that writes about it. `flake.nix:137-140` becomes:
    ```sh
    # check: pacman
    bad=
-   grep -IrnwE 'pacman|yay' ${self} | sed "s|^${self}/||" > hits || true
+   grep -IrnwE --exclude-dir=intent --exclude-dir=spec --exclude-dir=plan \
+     'pacman|yay' ${self} | sed "s|^${self}/||" > hits || true
    grep -v '^[[:space:]]*#' tests/pacman-allowed.txt | grep -v '^[[:space:]]*$' > allowed
    while IFS= read -r hit; do
      text=$(printf '%s' "$hit" | cut -d: -f3- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -122,7 +126,7 @@ silently, and the whole point of this issue is that a failing check must fail th
    ```
    `grep -I` skips `docs/img/*.png` and `*.mp4`, which carry the byte sequences as
    substrings. `cut -d: -f3-` is safe: no tracked path contains a colon.
-   → verify by the two fixtures under Tests, and by the tree passing with the ten
+   → verify by the two fixtures under Tests, and by the tree passing with the five
    present. Runner-safe: one `grep` over the store copy of the tree.
 
 6. **`flake.nix`, `AGENTS.md`, `README.md`, `ci.yml`: one source of truth, checked.**
@@ -142,7 +146,7 @@ silently, and the whole point of this issue is that a failing check must fail th
    ```
    The extractor does not match itself: its own pattern text is `# check: [a-z-]+`, and
    `[` is not in `[a-z-]`. This commit rewrites `AGENTS.md:57`, `README.md:236` and
-   `ci.yml:18` — three of the ten allow-listed pacman lines — so it updates
+   `ci.yml:18` — three of the five allow-listed pacman lines — so it updates
    `tests/pacman-allowed.txt` in the same commit.
    → verify by the two docs-sync fixtures under Tests. Runner-safe: `grep`, `awk`, `comm`.
 
