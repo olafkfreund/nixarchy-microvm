@@ -63,7 +63,17 @@ for — and its arming condition (`queue.length > 0 && !actionProcess.running &&
 design is correct in the world we are actually in, and would have been inert in
 the other.
 
-**finding 5: not determined.**
+**finding 5: still not determined** (second attempt, same day).
+
+The menu was enabled on p620 and everything else in this section was checked,
+but the destruction test — a plugin reload with the menu open — was not
+attempted: the shell had already crashed once and needed several restarts to
+settle during this session, and forcing another reload to answer a question
+about code that is inert either way was not worth the owner's desktop.
+`Component.onDestruction` is guarded by `root.opened`, so it stays a no-op
+whichever way the finding goes.
+
+Superseded detail from the first attempt follows.
 
 It needs the full-screen menu, and the menu has never been enabled on this
 host: `nixarchy.microvm` is absent from `shell.json`'s `plugins` array, so the
