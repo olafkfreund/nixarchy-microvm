@@ -1234,7 +1234,9 @@ function listActions(state, c) {
   var counts = c || {}
   return {
     create: true,
-    assist: !!s.agent && s.aiAssist !== false,
+    // schemaLoaded false means schema.json could not be read, so the reply
+    // could never be validated: offering i would be offering a dead key.
+    assist: !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
     apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
   }
 }

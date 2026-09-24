@@ -81,6 +81,7 @@ Singleton {
     optReplace: root.optReplace,
     agent: root.agent,
     aiAssist: root.aiAssist,
+    schemaLoaded: root.schemaText !== "",
     serviceQueued: root.pending.service === true,
     servicesRow: root.serviceHeals ? true : root.servicesRow
   })
@@ -391,6 +392,7 @@ Singleton {
     if (!Model.isDescribe(prompt) || !Model.trim(prompt)) { root.agentError = "Describe the VM in one line of at most 500 characters"; return false }
     var argv = Model.agentArgv(root.agent, root.schemaText, Model.agentPrompt(prompt, root.templates))
     if (!argv) { root.agentError = "the agent could not be started"; return false }
+    root.agentEnded = ""
     root.agentError = ""
     root.reasoning = ""
     root.agentForm = null
@@ -405,11 +407,31 @@ Singleton {
     return true
   }
 
+  // Why the call ended, as a flag rather than by matching on the message. The
+  // string sentinel only covered cancellation, so a timeout's own message was
+  // overwritten by the generic exit line that followed it.
+  property string agentEnded: ""
+
   function cancelAgent() {
     if (!agentProcess.running) return
     agentTimer.stop()
+    root.agentEnded = "cancelled"
     agentProcess.running = false
     root.agentError = "cancelled"
+  }
+
+  // Ends a call and clears everything it produced. Called when the form is
+  // left or a surface is dismissed — never from reset(), which must not touch
+  // the stream or the log.
+  function resetAgent() {
+    agentTimer.stop()
+    if (agentProcess.running) {
+      root.agentEnded = "closed"
+      agentProcess.running = false
+    }
+    root.reasoning = ""
+    root.agentForm = null
+    root.agentError = ""
   }
 
   Timer {
@@ -417,6 +439,7 @@ Singleton {
     interval: 90000
     onTriggered: {
       if (!agentProcess.running) return
+      root.agentEnded = "timeout"
       agentProcess.running = false
       root.agentError = "the agent took too long (90 s)"
     }
@@ -585,6 +608,9 @@ Singleton {
     path: root.schemaPath
     printErrors: false
     onLoaded: root.schemaText = text()
+    // Without this the schema silently stayed empty and askAgent refused for
+    // ever, with the i key still on offer.
+    onLoadFailed: root.schemaText = ""
   }
 
   Process {
@@ -652,7 +678,7 @@ Singleton {
 
     onExited: function(code) {
       agentTimer.stop()
-      if (root.agentError === "cancelled") return
+      if (root.agentEnded !== "") return
       var failure = Model.agentFailure(agentReplyOut.text, agentReplyErr.text, code)
       if (failure) {
         root.agentError = failure

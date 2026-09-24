@@ -139,3 +139,14 @@ test("hiddenReason: the m hint names set-template only when it is missing (#4)",
   eq(Model.hiddenReason(stopped, { vmSetTemplate: false }, "edit"), "changing the template needs nixarchy vm set-template (nixarchy#762)")
   eq(Model.hiddenReason(running, { vmSetTemplate: true }, "edit"), "stop it first to change the template")
 })
+
+test("listActions hides assist when the schema could not be read (#23)", () => {
+  const base = { agent: "claude", aiAssist: true }
+  ok(Model.listActions(Object.assign({ schemaLoaded: true }, base), {}).assist)
+  // schema.json unreadable: the reply could never be validated, so offering i
+  // would be offering a dead key.
+  ok(!Model.listActions(Object.assign({ schemaLoaded: false }, base), {}).assist)
+  // Absent (an older state object) must not hide it.
+  ok(Model.listActions(base, {}).assist)
+  ok(!Model.listActions({ agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
+})

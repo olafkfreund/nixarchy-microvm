@@ -82,8 +82,10 @@ FocusScope {
   function openForm(kind) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    // The form binds agentError; clearing it there would break the binding
+    // (#7). #23 owns the agent's lifecycle, so this goes through its API
+    // rather than writing the property directly.
+    MicrovmState.resetAgent()
     createForm.start(kind || "disposable")
   }
 
@@ -92,8 +94,7 @@ FocusScope {
   function openEdit(row) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    MicrovmState.resetAgent()
     createForm.startEdit(row)
   }
 
@@ -121,6 +122,9 @@ FocusScope {
   }
 
   function setMode(next) {
+    // Read the old mode before assigning: leaving the form ends any call it
+    // started, so a reply cannot land against a form that is gone.
+    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent()
     root.mode = next
     root.helpOpen = false
     Qt.callLater(root.focusForMode)
@@ -130,6 +134,10 @@ FocusScope {
   function dismiss() {
     helpOpen = false
     closeConfirm()
+    // A call left running when the surface closes kept claude alive for up to
+    // 90 s and made the next i a silent no-op. The stream and the log are
+    // deliberately untouched.
+    MicrovmState.resetAgent()
   }
 
   // --------------------------------------------------------------- actions
