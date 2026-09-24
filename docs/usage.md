@@ -182,7 +182,10 @@ closing that terminal stops the VM.
      daemon nobody can log into; the form warns.
    - **Shares**: `host:guest` pairs, space-separated, such as `~/src:/mnt/src`.
      The guest path must be absolute and cannot be `/`, `/nix` or `/mnt/host`,
-     which the guest already uses.
+     which the guest already uses. Neither side may contain a `.` or `..`
+     segment — write the path you mean in full rather than reaching through a
+     parent. `~/` needs a plain absolute `HOME`; if yours contains anything
+     unusual, spell the host path out instead.
 3. Press Enter. The **review** shows the exact line that will go into
    `~/.config/nixarchy/apps.nix`, the two commands that write it (the
    `microvm` service row, then the line), and a reminder that applying
