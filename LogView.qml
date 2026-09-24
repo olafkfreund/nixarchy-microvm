@@ -23,7 +23,14 @@ FocusScope {
 
   signal backRequested()
 
-  implicitHeight: header.implicitHeight + Style.spacing.md + logList.height + Style.spacing.md + hint.implicitHeight
+  // logChrome and a requested height, not logList.height: reading the list's
+  // assigned height here is the back edge that turns the whole graph cyclic,
+  // because that height now comes from ours. 340 survives with a new meaning --
+  // the height the log asks for when nobody has told it how much it may have,
+  // rather than a cap it can never exceed.
+  readonly property int logChrome: header.implicitHeight + hint.implicitHeight
+    + Style.spacing.md * 2
+  implicitHeight: logChrome + Style.space(340)
 
   function toEnd() {
     root.follow = true
@@ -95,7 +102,7 @@ FocusScope {
     ListView {
       id: logList
       width: parent.width
-      height: Style.space(340)
+      height: root.height > 0 ? Math.max(0, root.height - root.logChrome) : Style.space(340)
       clip: true
       boundsBehavior: Flickable.StopAtBounds
       model: root.lines
