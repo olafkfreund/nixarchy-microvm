@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 25
 spec: spec/2026-09-24-25-view-and-form.md
 ---
