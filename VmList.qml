@@ -30,7 +30,7 @@ Item {
   readonly property int count: rowModel.count
 
   signal actionRequested(string key, string verb)
-  signal cursorRequested(int index)
+  signal cursorRequested(string key)
 
   width: parent ? parent.width : implicitWidth
   implicitHeight: listView.height
@@ -120,7 +120,7 @@ Item {
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton
       cursorShape: rowSurface.enterVerb ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse) root.cursorRequested(rowSurface.rowIndex)
+      onContainsMouseChanged: if (containsMouse) root.cursorRequested(rowSurface.row.key)
       onClicked: if (rowSurface.enterVerb) root.actionRequested(rowSurface.row.key, rowSurface.enterVerb)
     }
 

@@ -74,6 +74,47 @@ test("clampCursor keeps the cursor inside the list", () => {
   eq(Model.clampCursor(4, 0), 0)
 })
 
+test("resolveCursor follows the row when the list re-sorts (#21)", () => {
+  const before = [{ key: "disposable:t2", name: "t2", kind: "disposable", runtime: "running" }, { key: "permanent:p1", name: "p1", kind: "permanent", runtime: "stopped" }, { key: "disposable:t1", name: "t1", kind: "disposable", runtime: "stopped" }, { key: "disposable:t3", name: "t3", kind: "disposable", runtime: "stopped" }]
+  eq(before[2].key, "disposable:t1")
+  const after = [{ key: "disposable:t1", name: "t1", kind: "disposable", runtime: "running" }, { key: "disposable:t2", name: "t2", kind: "disposable", runtime: "running" }, { key: "permanent:p1", name: "p1", kind: "permanent", runtime: "stopped" }, { key: "disposable:t3", name: "t3", kind: "disposable", runtime: "stopped" }]
+  const c = Model.resolveCursor(after, "disposable:t1", 2)
+  eq(c.key, "disposable:t1")
+  eq(c.index, 0)
+  ok(after[2].key === "permanent:p1", "p1 now holds the old index")
+})
+
+test("resolveCursor keeps the position when the row is gone (#21)", () => {
+  const gone = [{ key: "disposable:t2", name: "t2", kind: "disposable", runtime: "running" }, { key: "disposable:t3", name: "t3", kind: "disposable", runtime: "stopped" }, { key: "permanent:p1", name: "p1", kind: "permanent", runtime: "stopped" }]
+  const c = Model.resolveCursor(gone, "disposable:t1", 2)
+  eq(c.index, 2)
+  eq(c.key, gone[2].key)
+  const last = Model.resolveCursor(gone, "disposable:zz", 9)
+  eq(last.index, gone.length - 1)
+  eq(last.key, gone[gone.length - 1].key)
+})
+
+test("resolveCursor on an empty list (#21)", () => {
+  const e = Model.resolveCursor([], "disposable:t1", 3)
+  eq(e.key, "")
+  eq(e.index, 0)
+  const n = Model.resolveCursor(null, "", 0)
+  eq(n.key, "")
+  eq(n.index, 0)
+})
+
+test("resolveCursor with no key falls back to the index (#21)", () => {
+  const rows = [{ key: "disposable:t1", name: "t1", kind: "disposable", runtime: "running" }, { key: "disposable:t2", name: "t2", kind: "disposable", runtime: "running" }, { key: "disposable:t3", name: "t3", kind: "disposable", runtime: "stopped" }]
+  eq(Model.resolveCursor(rows, "", 1).key, rows[1].key)
+  eq(Model.resolveCursor(rows, "", 99).key, rows[rows.length - 1].key)
+  eq(Model.resolveCursor(rows, "", 99).index, rows.length - 1)
+})
+
+test("resolveCursor takes the first row with the key (#21)", () => {
+  const dup = [{ key: "disposable:t9", name: "t9", kind: "disposable", runtime: "stopped" }, { key: "disposable:t1", name: "t1", kind: "disposable", runtime: "stopped" }, { key: "disposable:t1", name: "t1", kind: "disposable", runtime: "running" }]
+  eq(Model.resolveCursor(dup, "disposable:t1", 2).index, 1)
+})
+
 test("reconcilePlan turns one key order into another", () => {
   const apply = (keys, rows) => {
     const out = keys.slice()

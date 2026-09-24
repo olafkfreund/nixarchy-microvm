@@ -62,6 +62,11 @@ feature this host does not have) is simply absent, and the footer says why.
 
 ### The list
 
+The cursor follows the machine, not the position. Running VMs sort first, so
+the list reorders under you as things start and stop — the highlight travels
+with the VM you picked. Delete the one you are on and the cursor stays where it
+was, on whichever row moves up into the slot.
+
 | Key | Does |
 | --- | --- |
 | `j` `k` `↑` `↓` | Move the cursor down / up |
