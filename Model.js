@@ -501,6 +501,23 @@ function clampCursor(cursorIndex, total) {
   return cursorIndex
 }
 
+// The cursor's identity, reconciled against a list that re-sorts under it.
+// The key is what an action applies to; the index is a cache for drawing, so a
+// stale index can misdraw a highlight for a frame but can never act on the
+// wrong machine. A key that has left the list falls back to its old position,
+// clamped: the row that slid into the slot takes the cursor.
+function resolveCursor(rows, key, index) {
+  var list = rows || []
+  if (list.length === 0) return { key: "", index: 0 }
+  if (key) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].key === key) return { key: key, index: i }
+    }
+  }
+  var at = clampCursor(index, list.length)
+  return { key: list[at].key, index: at }
+}
+
 // Where ↓/↑ (delta ±1) or the filter's ↓ (delta 0) put the cursor. With no
 // active cursor, ↓ activates the first row rather than stepping past it
 // (#5), and ↑ leaves for the filter; so does ↑ from the first row.
