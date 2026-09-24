@@ -688,10 +688,14 @@ function isHostPath(value) {
   return true
 }
 
+// Null when the path needs HOME and HOME cannot be written into Nix. An
+// absolute path never needs it, so a pathological HOME blocks only the shares
+// that actually use ~/.
 function expandHome(path, hostHome) {
   var text = String(path || "")
   var host = trim(hostHome).replace(/\/+$/, "")
-  return text.indexOf("~/") === 0 && host ? host + text.substring(1) : text
+  if (text.indexOf("~/") !== 0) return text
+  return isHostHome(host) ? host + text.substring(1) : null
 }
 
 // The guest side of a share, normalised before it is judged: "/mnt//src/"
@@ -730,11 +734,13 @@ function parseShares(value, hostHome) {
   for (var i = 0; i < list.length; i++) {
     var parts = list[i].split(":")
     if (parts.length !== 2) return { error: "Each share is host:guest" }
-    if (!isPath(parts[0])) return { error: "Host paths are absolute or ~/…, using " + PATH_CHARS }
+    if (!isHostPath(parts[0])) return { error: "Host paths are absolute or ~/…, using " + PATH_CHARS + ", with no . or .. segments" }
     var guest = normalizeGuestPath(parts[1])
     if (!guest) return { error: "Guest paths are absolute, with no . or .. segments" }
     if (isReservedGuest(guest)) return { error: guest + " is already used inside the guest" }
-    out.push({ source: expandHome(parts[0], hostHome), mountPoint: guest })
+    var source = expandHome(parts[0], hostHome)
+    if (source === null) return { error: "HOME is not a plain absolute path, so ~/ cannot be expanded; write the path in full" }
+    out.push({ source: source, mountPoint: guest })
   }
   return { shares: out }
 }

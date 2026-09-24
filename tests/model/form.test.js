@@ -33,6 +33,28 @@ test("isHostHome and isHostPath reject what the emitter cannot write (#22)", () 
   ok(!Model.isHostPath("/srv/./etc"), "no . segment")
 })
 
+test("a pathological HOME blocks ~/ shares, not absolute ones (#22)", () => {
+  const BAD = ["/home/${builtins.currentTime}", 'a"b'.replace("a", "/home/"), "/home/a\\b", "", "/home/a b", "~/x", "/home/../root"]
+  for (const bad of BAD) {
+    const f = form({ shares: "~/src:/mnt/src" })
+    ok(Model.validateForm(f, rows, TEMPLATES, bad).errors.shares, "shares error for HOME " + JSON.stringify(bad))
+    eq(Model.machineSnippet(f, rows, TEMPLATES, bad), null)
+    eq(Model.expandHome("~/src", bad), null)
+    // An absolute share never needs HOME, so it is unaffected.
+    const abs = form({ shares: "/srv:/mnt/srv" })
+    eq(Model.validateForm(abs, rows, TEMPLATES, bad).errors, {})
+    ok(Model.machineSnippet(abs, rows, TEMPLATES, bad), "absolute share still writes under a bad HOME")
+    eq(Model.expandHome("/srv", bad), "/srv")
+  }
+})
+
+test("the host side of a share rejects . and .. segments (#22)", () => {
+  ok(errors({ shares: "~/../etc:/mnt/etc" }).shares)
+  ok(errors({ shares: "/srv/../etc:/mnt/etc" }).shares)
+  ok(errors({ shares: "/srv/./etc:/mnt/etc" }).shares)
+  eq(errors({ shares: "/srv/a.b:/mnt/a" }), {})
+})
+
 test("emptyForm: strings and bools only, disposable by default", () => {
   const f = Model.emptyForm()
   eq(f.kind, "disposable")
