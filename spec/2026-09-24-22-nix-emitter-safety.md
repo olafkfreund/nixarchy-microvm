@@ -82,6 +82,22 @@ what it meant and only a save of it is refused, with the field error visible.
 The emitter's output stays a strict subset of what the parser accepts, which is
 all `parse(emit(f)) == f` needs; the reverse was never claimed.
 
+State the invariant precisely, because the loose form is false. The parser
+discards tags and reconstructs share paths, so equality holds against `f`'s
+*normalised fields*, never against an arbitrary form object — a form carrying
+tags or an unnormalised share spelling will not compare equal and is not meant
+to. The assertion this spec commits to, and the one the tests encode, is
+`parseMachineSnippet(machineSnippet(f))` equals the normalised fields of `f`.
+Every use of the short form in this document means that.
+
+Say also what the widened parse-side tag check is and is not. It validates
+*syntactic safety* — the tag sits inside a quoted Nix string, is discarded on
+read and re-derived on write, so nothing in it can reach the emitted line. It
+does not validate *emitter provenance*: a hand-edited tag outside the emitter's
+output language will still read as `managed`. That is intended, since the
+alternative is telling the user their own line was edited by hand when the
+plugin wrote it, which is the bug being fixed.
+
 **The comment at `Model.js:840-845`** drops "every string in it is drawn from a
 set with no `" \` or `${`, so it needs no escaping" and says instead: nothing
 is escaped because every string is checked against `nixSafe` immediately before
@@ -102,6 +118,14 @@ source would still fail and the parse would still return null. Making escaping
 round-trip means loosening `isPath` too: widening the Nix this repository emits
 in order to be safe about emitting it. The one string that needed escaping was
 `hostHome`, which has no business holding a quote.
+
+To be exact about the strength of that argument: it is a cost argument, not an
+impossibility proof. Escaping could be confined to a separate Nix-string
+grammar, decoded before path validation, leaving `isPath` untouched — so the
+rejection is not logically forced, as an independent review pointed out. It is
+rejected because it buys nothing here: two grammars and a decode step to defend
+one value that a one-line predicate defends instead, in a repository whose rule
+is that the snippet grammar is the only Nix it emits.
 
 **Tighten `isPath` instead of sanitising the tag** — drop `+`, bound the
 segment. It rejects a path a user may have declared and applied: a `/mnt/c++`
