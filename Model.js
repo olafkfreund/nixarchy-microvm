@@ -101,7 +101,13 @@ function sanitize(value, maxLength) {
   var out = ""
   for (var i = 0; i < text.length; i++) {
     var code = text.charCodeAt(i)
-    if (code < 0x20 || code === 0x7F || (code >= 0x80 && code <= 0x9F)) continue
+    // Bidi overrides and isolates reorder what follows them, so a string can
+    // render as something other than what it is; the separators break a line
+    // in two. U+200E and U+200F are kept on purpose: they only mark direction
+    // and cannot reorder.
+    if (code < 0x20 || code === 0x7F || (code >= 0x80 && code <= 0x9F) ||
+        (code >= 0x202A && code <= 0x202E) || (code >= 0x2066 && code <= 0x2069) ||
+        code === 0x2028 || code === 0x2029) continue
     out += text.charAt(i)
   }
   out = out.replace(/^\s+|\s+$/g, "")
