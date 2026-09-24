@@ -51,6 +51,8 @@ var SHORTCUTS = [
 
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "tab", text: "Switch to the next bar panel" },
+  { group: "Panel", keys: "shift+tab", text: "Switch to the previous bar panel" },
   { group: "Panel", keys: "?", text: "Show this list" },
   // Two entries, not one: form.test.js caps a key label at 12 characters, and
   // "y  n  enter  esc" is 16.
@@ -61,9 +63,13 @@ var SHORTCUTS = [
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
+  { group: "Form", keys: "j  k", text: "Move between fields; on a text field they type, so use tab" },
+  { group: "Form", keys: "↓", text: "Open the picker under a template or key field" },
   { group: "Form", keys: "esc", text: "Cancel" },
 
   { group: "Log", keys: "j  k", text: "Scroll (stops following)" },
+  { group: "Log", keys: "↑  ↓", text: "Scroll (stops following)" },
+  { group: "Log", keys: "PageUp  PgDn", text: "Scroll a screenful" },
   { group: "Log", keys: "G  end", text: "Jump to the end and follow" },
   { group: "Log", keys: "esc", text: "Back to the list; the job keeps running" }
 ]

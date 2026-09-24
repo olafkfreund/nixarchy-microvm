@@ -79,6 +79,7 @@ feature this host does not have) is simply absent, and the footer says why.
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
 | `u` | Refresh now |
+| `tab` `shift+tab` | Switch to the next / previous bar panel |
 | `?` | Show this list |
 | `esc` | Leave the filter, then close the panel |
 
@@ -103,7 +104,7 @@ stops the VM.
 | `tab` `↓` / `shift+tab` `↑` | Next / previous field |
 | `↓` on Template or SSH key | Into the list; `enter` picks, `esc` goes back |
 | `space` | Flip a switch or the kind |
-| `j` `k` | Move between switch rows (in a text field they type) |
+| `j` `k` | Move between fields; on a text field they type, so use `tab` |
 | `enter` | Create, or review a permanent VM's line |
 | `enter` on Describe | Ask the agent; `esc` cancels the call |
 | `esc` | Cancel |
@@ -112,7 +113,8 @@ stops the VM.
 
 | Key | Does |
 | --- | --- |
-| `j` `k` | Scroll (stops following) |
+| `j` `k` `↑` `↓` | Scroll (stops following) |
+| `PageUp` `PgDn` | Scroll a screenful |
 | `G` `end` | Jump to the end and follow |
 | `esc` | Back to the list; the job keeps running |
 
