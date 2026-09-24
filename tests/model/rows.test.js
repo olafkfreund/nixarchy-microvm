@@ -112,7 +112,7 @@ test("emptyText says why the list is empty", () => {
 
 test("every shortcut group renders, in the order first seen", () => {
   const groups = Model.shortcutGroups()
-  eq(groups.map(g => g.title), ["Move", "VM", "All VMs", "Panel", "Form", "Log"])
+  eq(groups.map(g => g.title), ["Move", "VM", "All VMs", "Panel", "Question", "Form", "Log"])
   ok(groups.every(g => g.entries.length > 0))
 })
 

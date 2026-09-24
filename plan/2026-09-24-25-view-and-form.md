@@ -89,7 +89,12 @@ No `MicrovmState.qml` change.
    the snippet argument renders as the reference and not as its text; a
    `/nix/store/…` first token renders as `nixarchy-pkg`; `[]` → `[]`. → verify by
    `node tests/run.js` showing 72 passed, and live check 3.
-7. `Model.js` `SHORTCUTS` (`:34-66`): add the Question group. Two entries, because
+7. `Model.js` `SHORTCUTS` (`:34-66`): add the Question group. *(Deviation,
+   recorded at implementation: adding a group also changes
+   `rows.test.js:115`, which pins the exact group order — the plan said the
+   total would stay at 72 and did not mention that existing assertion. The
+   order becomes Move, VM, All VMs, Panel, Question, Form, Log, and the test is
+   updated in the same commit.)* Two entries, because
    `tests/model/form.test.js:159` caps `keys` at 12 characters:
    `{ group: "Question", keys: "y  enter", text: "Answer yes" }` and
    `{ group: "Question", keys: "n  esc", text: "Answer no (the default)" }`. Add the

@@ -52,6 +52,10 @@ var SHORTCUTS = [
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
   { group: "Panel", keys: "?", text: "Show this list" },
+  // Two entries, not one: form.test.js caps a key label at 12 characters, and
+  // "y  n  enter  esc" is 16.
+  { group: "Question", keys: "y  enter", text: "Answer yes" },
+  { group: "Question", keys: "n  esc", text: "Answer no (the default)" },
 
   { group: "Form", keys: "tab  ↓", text: "Next field" },
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
@@ -492,6 +496,42 @@ function rowsFor(rows) {
     out.push(full)
   }
   return out
+}
+
+// Which item owns the keyboard, as a function of state rather than of history.
+// A question owns it wherever focus happened to be, which is the bug: opening a
+// confirmation while the filter had focus left the filter eating y, n, Enter
+// and Escape, so the question could not be answered from the keyboard at all.
+// The commands the review promises to run, in full. It used to slice each argv
+// to four tokens with no ellipsis, so for `nixarchy-pkg opt set <path> <value>`
+// the value -- the entire line being written into apps.nix -- was simply not
+// shown, on a screen whose job is to let the user confirm exactly that.
+//
+// The snippet is rendered as a reference rather than repeated, because the
+// review already prints it in full immediately above; measuring nothing keeps
+// this independent of the card's width.
+function reviewCommandLines(argvs, snippet, optPath) {
+  var out = []
+  var list = argvs || []
+  for (var i = 0; i < list.length; i++) {
+    var argv = list[i] || []
+    var parts = []
+    for (var j = 0; j < argv.length; j++) {
+      var token = String(argv[j])
+      if (j === 0 && token.charAt(0) === "/") parts.push("nixarchy-pkg")
+      else if (snippet && token === snippet) parts.push("\u2039the line above\u203a")
+      else parts.push(token)
+    }
+    out.push(parts.join(" "))
+  }
+  return out
+}
+
+function focusTarget(state) {
+  var s = state || {}
+  if (s.confirmOpen) return "confirm"
+  if (s.mode === "log" || s.mode === "form" || s.mode === "review") return s.mode
+  return "list"
 }
 
 function clampCursor(cursorIndex, total) {

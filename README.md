@@ -82,6 +82,13 @@ feature this host does not have) is simply absent, and the footer says why.
 | `?` | Show this list |
 | `esc` | Leave the filter, then close the panel |
 
+### A question
+
+| Key | Does |
+| --- | --- |
+| `y` `enter` | Answer yes |
+| `n` `esc` | Answer no (the default) |
+
 `s` on a stopped disposable VM starts it in the background, with its first
 build streamed into the panel. Enter on a running one opens its console in a
 terminal, and Ctrl-] leaves it running. On a nixarchy from before

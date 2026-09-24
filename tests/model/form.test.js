@@ -161,3 +161,17 @@ test("every ? sheet key label fits the key column (#9)", () => {
   ok(form.includes("tab  ↓ = Next field"))
   ok(form.includes("shift+tab  ↑ = Previous field"))
 })
+
+test("focusTarget: a question owns the keyboard, whatever the mode (#25)", () => {
+  for (const mode of ["list", "form", "review", "log"]) {
+    eq(Model.focusTarget({ mode: mode, confirmOpen: true }), "confirm")
+  }
+  eq(Model.focusTarget({ mode: "list", confirmOpen: false }), "list")
+  eq(Model.focusTarget({ mode: "form", confirmOpen: false }), "form")
+  eq(Model.focusTarget({ mode: "review", confirmOpen: false }), "review")
+  eq(Model.focusTarget({ mode: "log", confirmOpen: false }), "log")
+  // An unknown mode falls back to the list, not to nothing.
+  eq(Model.focusTarget({ mode: "nonsense", confirmOpen: false }), "list")
+  eq(Model.focusTarget({}), "list")
+  eq(Model.focusTarget(null), "list")
+})
