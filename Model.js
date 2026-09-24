@@ -172,19 +172,6 @@ function optPath(name) {
 
 // ---------------------------------------------------------------- parsing
 
-function parseJsonLines(raw) {
-  var lines = String(raw || "").split("\n")
-  var out = []
-  for (var i = 0; i < lines.length; i++) {
-    var line = trim(lines[i])
-    if (line.charAt(0) !== "{") continue
-    try {
-      out.push(JSON.parse(line))
-    } catch (e) {
-    }
-  }
-  return out
-}
 
 // `[` first means the JSON the upstream PR adds; anything else is today's
 // text. The caller learns which it got from `isJsonList`.
