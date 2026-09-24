@@ -96,8 +96,13 @@ the steps keep their numbers so the trail matches this plan.
    (`:336`) build their line through `Model.processFailure`. QML-only wiring.
    → verify by `nix flake check`, and live by stopping an already-stopped VM
    and reading the line.
-5. **`MicrovmState.qml`: the lock's shape.** `property string pendingCommand:
-   ""` beside `pendingVerb` (`:126`); `launch()` (`:207`) gains
+5. **`MicrovmState.qml`: the lock's shape.** *(Deviation, recorded at
+   implementation: the `pendingCommand` declaration moved into step 4, which
+   reads it in `actionProcess.onExited`. Leaving it here would have left the
+   tree referencing an undeclared property between the two commits, against the
+   plan's own rule that each step leaves a working tree. Step 5 still sets it in
+   `launch()`.)* `property string pendingCommand: ""` beside `pendingVerb`
+   (`:126`) — now in step 4; `launch()` (`:207`) gains
    `root.pendingCommand = Model.commandName(argv)`. The `Qt.callLater` handoff
    (`:537`-`:541`) is reordered to `root.launch(actionProcess, root.queue[0]);
    root.queue = root.queue.slice(1)`, so the two holders overlap. Add `Timer {

@@ -124,6 +124,10 @@ Singleton {
 
   property string pendingKey: ""
   property string pendingVerb: ""
+  // The command currently owed an exit, so a failure can name it. Set at every
+  // launch rather than read from queue[0], which holds the remainder after the
+  // slice and so names the culprit's successor.
+  property string pendingCommand: ""
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
@@ -332,10 +336,14 @@ Singleton {
   property string schemaText: ""
 
   function askAgent(prompt) {
-    if (agentProcess.running || !root.agent || !root.schemaText) return false
+    // Every refusal says why. Returning a bare false left the user pressing i
+    // and watching nothing happen, with no message anywhere.
+    if (agentProcess.running) { root.agentError = "the agent is still thinking"; return false }
+    if (!root.agent) { root.agentError = "no agent is configured"; return false }
+    if (!root.schemaText) { root.agentError = "the plugin's schema.json could not be read, so assist is unavailable"; return false }
     if (!Model.isDescribe(prompt) || !Model.trim(prompt)) { root.agentError = "Describe the VM in one line of at most 500 characters"; return false }
     var argv = Model.agentArgv(root.agent, root.schemaText, Model.agentPrompt(prompt, root.templates))
-    if (!argv) return false
+    if (!argv) { root.agentError = "the agent could not be started"; return false }
     root.agentError = ""
     root.reasoning = ""
     root.agentForm = null
@@ -523,7 +531,11 @@ Singleton {
       var failed = code !== 0 || refused !== ""
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed) {
-        var why = refused || Model.errorText(actionErr.text) || (root.pendingVerb + " failed (exit " + code + ")")
+        var why = Model.processFailure({
+          verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+          command: root.pendingCommand, code: code,
+          stdout: actionOut.text, stderr: actionErr.text, refused: refused
+        })
         // The service row went through but the line did not: say both.
         if (root.pendingVerb === "creating" && root.queue.length === 0 && root.pendingKey.indexOf("permanent:") === 0)
           why = "service queued, machine not written: " + why + " (a service with no machines is inert)"
@@ -556,7 +568,7 @@ Singleton {
       root.clearBusyNotice()
       root.streamExit = code
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
-      if (code !== 0) root.lastError = root.streamTitle + " failed (exit " + code + ") — o shows the log"
+      if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
       if (root.active || root.background) root.refresh()
     }
   }
