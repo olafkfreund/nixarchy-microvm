@@ -1484,6 +1484,17 @@ function processFailure(info) {
   return subject + " failed (exit " + (f.code === undefined || f.code === null ? "?" : f.code) + ")"
 }
 
+// Which reads are showing a value older than the last poll. Fixed order so the
+// line is stable, empty when everything is current.
+function staleList(flags) {
+  var f = flags || {}
+  var out = []
+  if (f.units) out.push("units")
+  if (f.pending) out.push("pending")
+  if (f.help) out.push("help")
+  return out
+}
+
 // The footer while a mutation runs. The escape is only ever offered for a hold
 // the user can safely end, and only once it has run long enough to look stuck.
 function workingText(info) {

@@ -37,3 +37,11 @@ test("workingText offers the escape only when it is offered (#23)", () => {
   eq(Model.workingText({ verb: "creating", key: "p1", escapable: true }), "working… creating p1 — X gives up")
   ok(Model.workingText({ verb: "creating", key: "p1", escapable: false }).indexOf("X gives up") === -1)
 })
+
+test("staleList names the degraded reads, in a fixed order (#23)", () => {
+  eq(Model.staleList({}), [])
+  eq(Model.staleList(null), [])
+  eq(Model.staleList({ units: true }), ["units"])
+  eq(Model.staleList({ help: true, units: true, pending: true }), ["units", "pending", "help"])
+  eq(Model.staleList({ pending: true, help: true }), ["pending", "help"])
+})

@@ -132,6 +132,11 @@ Singleton {
   // minute. Never set for streamProcess: a build the user can watch in the log
   // is not stuck, it is slow.
   property bool escapable: false
+  // A read that failed and kept its last value, rather than pretending the
+  // world changed.
+  property bool unitsStale: false
+  property bool pendingStale: false
+  property bool helpStale: false
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
@@ -435,6 +440,9 @@ Singleton {
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
+      stale: Model.staleList({ units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
+      command: root.pendingCommand,
+      pid: actionProcess.processId,
       agentError: root.agentError,
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
@@ -466,13 +474,22 @@ Singleton {
   Process {
     id: unitsProcess
     stdout: StdioCollector { id: unitsOut; waitForEnd: true }
-    onExited: function(code) { root.units = code === 0 ? Model.parseUnits(unitsOut.text) : [] }
+    // A transient systemctl failure used to flip every permanent VM to
+    // not-running for one poll, with no message. Keep the last good read and
+    // say it is stale instead.
+    onExited: function(code) {
+      if (code === 0) { root.units = Model.parseUnits(unitsOut.text); root.unitsStale = false }
+      else root.unitsStale = true
+    }
   }
 
   Process {
     id: pendingProcess
     stdout: StdioCollector { id: pendingOut; waitForEnd: true }
-    onExited: function(code) { root.pending = Model.parsePending(pendingOut.text) }
+    onExited: function(code) {
+      if (code === 0) { root.pending = Model.parsePending(pendingOut.text); root.pendingStale = false }
+      else root.pendingStale = true
+    }
   }
 
   Process {
@@ -484,7 +501,15 @@ Singleton {
   Process {
     id: helpProcess
     stdout: StdioCollector { id: helpOut; waitForEnd: true }
-    onExited: function(code) { root.features = Model.detectFeatures(helpOut.text) }
+    stderr: StdioCollector { id: helpErr; waitForEnd: true }
+    // Some tools print usage on stderr. Reading stdout alone would have made
+    // all three features silently false and removed three keys with no reason
+    // given, indistinguishable from an old nixarchy.
+    onExited: function(code) {
+      var text = Model.trim(helpOut.text + "\n" + helpErr.text)
+      if (text) { root.features = Model.detectFeatures(text); root.helpStale = false }
+      else root.helpStale = true
+    }
   }
 
   Process {
