@@ -101,8 +101,8 @@ that commit writes — widening the parser first can never break that, and the
 or a pathological HOME yields a null snippet with no field error.
 
 1. **`Model.js`: add the three predicates, wired to nothing.**
-   `nixSafe(value)` → `!/["\\]/.test(v) && v.indexOf("${") === -1 &&
-   !hasControlChars(v)` (`hasControlChars` exists at `Model.js:747`), beside
+   `nixSafe(value)` → `!/["\\]/.test(value) && value.indexOf("${") === -1 &&
+   !hasControlChars(value)` (`hasControlChars` exists at `Model.js:747`), beside
    `nixString` (`Model.js:847`).
    `isHostHome(value)` → `/^\/[A-Za-z0-9_.\/+-]*$/` plus length ≤ 4096 plus no
    `.` or `..` segment, beside `isPath` (`Model.js:663`).
