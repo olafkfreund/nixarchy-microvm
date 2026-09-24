@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 25
 author: olafkfreund
 ---
@@ -67,7 +67,7 @@ need `touched` or `attempted` (`:111-113`), so typing an invalid name and then
 clicking another field shows nothing: validation ran and stayed silent.
 
 **7. Negative widths in the narrow popup.** `VmList.qml:185`,
-`CreateForm.qml:266`, `CreateForm.qml:368` and `LogView.qml:342` all compute
+`CreateForm.qml:266`, `CreateForm.qml:368` and `LogView.qml:76` all compute
 `Math.min(implicitWidth, <parent> − constant)` with no floor. `identity` is
 anchored between `stateDot.right` and `rowActions.left`, so a permanent row with
 five buttons in the 456 px popup leaves `identity.width` under `kindBadge.width`
@@ -82,7 +82,7 @@ disappear rather than truncate: the wrong one of the two gives way.
 
 **9. Keys bound in code but absent from the `?` sheet.** `ShortcutSheet.qml`
 renders `Model.shortcutGroups()` faithfully, so the gaps are in `Model.js:34-66`:
-`LogView.qml:315-316` PageUp/PageDown and `:313-314` ↑/↓ scrolling (the Log group
+`LogView.qml:49-50` PageUp/PageDown and `:47-48` ↑/↓ scrolling (the Log group
 lists only j/k); `CreateForm.qml:221-222` j/k field movement, mode-dependent and
 so the most confusing omission — on a text field they type, on a switch row they
 navigate; `MicrovmView.qml:277` Tab and Shift+Tab to switch panels from the list;
