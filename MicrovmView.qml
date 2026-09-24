@@ -91,8 +91,10 @@ FocusScope {
   function openForm(kind) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    // The form binds agentError; clearing it there would break the binding
+    // (#7). #23 owns the agent's lifecycle, so this goes through its API
+    // rather than writing the property directly.
+    MicrovmState.resetAgent()
     createForm.start(kind || "disposable")
   }
 
@@ -101,8 +103,7 @@ FocusScope {
   function openEdit(row) {
     root.mode = "form"
     root.helpOpen = false
-    // The form binds this; clearing it there would break the binding (#7).
-    MicrovmState.agentError = ""
+    MicrovmState.resetAgent()
     createForm.startEdit(row)
   }
 
@@ -130,6 +131,9 @@ FocusScope {
   }
 
   function setMode(next) {
+    // Read the old mode before assigning: leaving the form ends any call it
+    // started, so a reply cannot land against a form that is gone.
+    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent()
     root.mode = next
     root.helpOpen = false
     Qt.callLater(root.focusForMode)
@@ -139,6 +143,10 @@ FocusScope {
   function dismiss() {
     helpOpen = false
     closeConfirm()
+    // A call left running when the surface closes kept claude alive for up to
+    // 90 s and made the next i a silent no-op. The stream and the log are
+    // deliberately untouched.
+    MicrovmState.resetAgent()
   }
 
   // --------------------------------------------------------------- actions
@@ -245,6 +253,9 @@ FocusScope {
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
     if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
+    // Above the row keys so it can never be read as a lower-case x, which
+    // deletes. Capital X only, and only while the offer stands.
+    if (key === "X") { if (MicrovmState.escapable && !MicrovmState.streaming) MicrovmState.abandon(); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -443,7 +454,7 @@ FocusScope {
               width: parent.width
               readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
               text: blocked !== "" ? blocked
-                : "Runs: " + root.reviewArgvs.map(function(a) { return a.slice(0, 4).map(function(x) { return x.indexOf("/") === 0 ? "nixarchy-pkg" : x }).join(" ") }).join(", then ")
+                : "Runs: " + root.reviewArgvs.map(function(a) { return [Model.commandName(a)].concat(a.slice(1, 4)).join(" ") }).join(", then ")
               textFormat: Text.PlainText
               color: blocked !== "" ? Color.urgent : root.dim
               font.family: root.fontFamily
@@ -654,10 +665,29 @@ FocusScope {
             font.pixelSize: Style.font.caption
           }
 
+          // The mouse's way to the same escape the X key offers. Appears only
+          // with the offer, so the footer is unchanged until something looks
+          // stuck.
+          PanelActionButton {
+            id: abandonButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: MicrovmState.escapable && !MicrovmState.streaming
+            iconText: Model.Glyph.stop
+            tooltipText: "Give up on " + MicrovmState.pendingVerb + "  (X)"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: MicrovmState.abandon()
+          }
+
           Text {
             id: keysText
-            anchors.right: parent.right
-            text: MicrovmState.mutating ? "working…"
+            anchors.right: abandonButton.visible ? abandonButton.left : parent.right
+            anchors.rightMargin: abandonButton.visible ? Style.spacing.sm : 0
+            text: MicrovmState.mutating
+              ? Model.workingText({ verb: MicrovmState.pendingVerb,
+                                    key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",
+                                    escapable: MicrovmState.escapable && !MicrovmState.streaming })
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText
             color: root.foreground

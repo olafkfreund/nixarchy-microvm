@@ -322,6 +322,14 @@ lists them and what happens without each.
 time, across the popup and the menu. The message names the job holding the
 lock. `o` shows its log, and the key works again once the job finishes.
 
+**A change that will not finish.** While something runs, the footer reads
+`working…` and names it. If it is still going after a minute, the footer adds
+`— X gives up` and a button appears beside it. `X` asks the command to stop and
+kills it three seconds later if it ignores that. The lock is released only once
+the command is actually gone, never on a timer — so a write to `apps.nix` can
+never be abandoned while it is still writing. A build you are watching in the
+log is never offered `X`: it is slow, not stuck.
+
 **A running build stopped.** Restarting or reloading the shell ends a stream
 it was running. Start it again.
 

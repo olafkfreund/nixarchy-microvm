@@ -51,6 +51,7 @@ var SHORTCUTS = [
 
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "X", text: "Give up on a change stuck over a minute" },
   { group: "Panel", keys: "?", text: "Show this list" },
 
   { group: "Form", keys: "tab  ↓", text: "Next field" },
@@ -1316,7 +1317,9 @@ function listActions(state, c) {
   var counts = c || {}
   return {
     create: true,
-    assist: !!s.agent && s.aiAssist !== false,
+    // schemaLoaded false means schema.json could not be read, so the reply
+    // could never be validated: offering i would be offering a dead key.
+    assist: !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
     apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
   }
 }
@@ -1536,6 +1539,66 @@ function parseSshKeys(raw) {
 // the file changed. The error text, or "" when it went through (or when the
 // output is not one of its objects at all, so a plain writer's exit code
 // still decides).
+// ---------------------------------------------------------------- failure
+//
+// One place that turns a finished Process into a line for the user, so a
+// failure cannot reach them as silence or as the wrong reason.
+
+// The command a user would recognise. nixarchy.pkg's adapter is not on PATH
+// and is invoked by its full store path, so it is named for what it is.
+function commandName(argv) {
+  var list = argv || []
+  if (!list.length) return ""
+  var first = String(list[0] || "")
+  if (!first) return ""
+  if (/\/nixarchy\.pkg\/bin\/nixarchy-pkg$/.test(first)) return "nixarchy-pkg"
+  return first.split("/").pop()
+}
+
+// Why a command failed, in one line. A writer's own refusal wins over the exit
+// code, because it says what the user did; reason is for a command that never
+// ran at all, where there is no output to read.
+function processFailure(info) {
+  var f = info || {}
+  var verb = trim(f.verb) || "the command"
+  var subject = trim(f.key) ? verb + " " + trim(f.key) : verb
+  if (trim(f.reason)) return subject + ": " + (trim(f.command) || "the command") + " " + trim(f.reason)
+  var refused = trim(f.refused) || writerError(f.stdout)
+  if (refused) return refused
+  var text = errorText(f.stderr) || errorText(f.stdout)
+  if (text) return text
+  return subject + " failed (exit " + (f.code === undefined || f.code === null ? "?" : f.code) + ")"
+}
+
+// Feature detection is re-run on a schedule, not on every open: probing on
+// each open re-spawned five processes a toggle, and Quickshell drops a command
+// assigned to a Process that is still running.
+function probeStale(now, probedAt) {
+  if (!probedAt) return true
+  return (now - probedAt) >= 600000
+}
+
+// Which reads are showing a value older than the last poll. Fixed order so the
+// line is stable, empty when everything is current.
+function staleList(flags) {
+  var f = flags || {}
+  var out = []
+  if (f.units) out.push("units")
+  if (f.pending) out.push("pending")
+  if (f.help) out.push("help")
+  return out
+}
+
+// The footer while a mutation runs. The escape is only ever offered for a hold
+// the user can safely end, and only once it has run long enough to look stuck.
+function workingText(info) {
+  var f = info || {}
+  var verb = trim(f.verb)
+  if (!verb) return "working…"
+  var text = "working… " + verb + (trim(f.key) ? " " + trim(f.key) : "")
+  return f.escapable ? text + " — X gives up" : text
+}
+
 function writerError(stdout) {
   var obj = parseObject(trim(stdout))
   if (!obj || obj.ok !== false) return ""

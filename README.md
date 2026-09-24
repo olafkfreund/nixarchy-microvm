@@ -84,6 +84,7 @@ was, on whichever row moves up into the slot.
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
 | `u` | Refresh now |
+| `X` | Give up on a change that has been running over a minute |
 | `?` | Show this list |
 | `esc` | Leave the filter, then close the panel |
 
