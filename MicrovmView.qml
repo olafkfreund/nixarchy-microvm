@@ -226,6 +226,9 @@ FocusScope {
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
     if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
+    // Above the row keys so it can never be read as a lower-case x, which
+    // deletes. Capital X only, and only while the offer stands.
+    if (key === "X") { if (MicrovmState.escapable && !MicrovmState.streaming) MicrovmState.abandon(); return }
     // Row keys: only what actionsFor lists for the row under the cursor.
     if ("esrlmxy".indexOf(key) !== -1 && key.length === 1) keyAtCursor(key === "e" ? "enter" : key)
   }
@@ -634,10 +637,29 @@ FocusScope {
             font.pixelSize: Style.font.caption
           }
 
+          // The mouse's way to the same escape the X key offers. Appears only
+          // with the offer, so the footer is unchanged until something looks
+          // stuck.
+          PanelActionButton {
+            id: abandonButton
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: MicrovmState.escapable && !MicrovmState.streaming
+            iconText: Model.Glyph.stop
+            tooltipText: "Give up on " + MicrovmState.pendingVerb + "  (X)"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: MicrovmState.abandon()
+          }
+
           Text {
             id: keysText
-            anchors.right: parent.right
-            text: MicrovmState.mutating ? "working…"
+            anchors.right: abandonButton.visible ? abandonButton.left : parent.right
+            anchors.rightMargin: abandonButton.visible ? Style.spacing.sm : 0
+            text: MicrovmState.mutating
+              ? Model.workingText({ verb: MicrovmState.pendingVerb,
+                                    key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",
+                                    escapable: MicrovmState.escapable && !MicrovmState.streaming })
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText
             color: root.foreground
