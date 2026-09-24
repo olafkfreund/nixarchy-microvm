@@ -86,6 +86,7 @@
           default = pkgs.runCommand "nixarchy-microvm-check"
             { nativeBuildInputs = [ pkgs.nodejs pkgs.jq ]; }
             ''
+              # check: tests
               # Model.js carries all the logic, and runs under plain Node.
               cp -r ${./tests} tests
               cp ${./Model.js} Model.js
@@ -95,6 +96,7 @@
               node tests/selftest.js
               node tests/run.js
 
+              # check: manifest
               # The manifest is what the shell validates at load: a typo in it
               # is a plugin that silently never appears.
               jq -e '
@@ -105,6 +107,7 @@
                 and .entryPoints.menu == "Menu.qml"
                 and .entryPoints.barWidget == "Panel.qml"
               ' ${plugin}/manifest.json > /dev/null
+              # check: entry-points
               for f in $(jq -r '.entryPoints[]' ${plugin}/manifest.json); do
                 test -f "${plugin}/$f" || { echo "entry point $f missing from the package" >&2; exit 1; }
               done
@@ -128,21 +131,26 @@
               comm -13 required packaged | sed 's/$/: packaged, but not a root file outside the deny-list/' >&2
               [ -z "$(comm -3 required packaged)" ] || exit 1
 
-              # The schema is handed to claude verbatim; a broken one is an
-              # agent that never answers. Strict, and without a $schema key,
-              # which claude's validator refuses.
+              # check: schema
+              # Asserts exactly two things about the schema handed to claude:
+              # additionalProperties is false, and there is no $schema key,
+              # which claude's validator refuses. It is not JSON-Schema
+              # validation -- a malformed properties or required would pass.
               jq -e '.additionalProperties == false and (has("$schema") | not)' ${plugin}/schema.json > /dev/null
 
+              # check: binds
               # The Home Manager module swaps the chord by string replacement,
               # so the shipped file must carry the default one verbatim.
               grep -qF 'o.bind("SUPER + ALT + V", "MicroVMs",' ${plugin}/microvm-binds.lua \
                 || { echo "microvm-binds.lua lost its default bind" >&2; exit 1; }
 
+              # check: singleton
               # Without this line the bar and the menu each get their own
               # state, and "one mutation at a time" silently stops holding.
               grep -qx 'singleton MicrovmState 1.0 MicrovmState.qml' ${plugin}/qmldir \
                 || { echo "qmldir does not declare the MicrovmState singleton" >&2; exit 1; }
 
+              # check: symlinks
               # omarchy-plugin-validate refuses symlinks inside a plugin. Both
               # places count: the package, and the repository itself, which
               # `omarchy plugin add` clones as the plugin folder. A symlink in
@@ -156,8 +164,8 @@
                 echo "symlink in the repository above" >&2; exit 1
               fi
 
-              # nixarchy's own plugin validation fails the rebuild on these.
               # check: pacman
+              # nixarchy's own plugin validation fails the rebuild on these.
               # omarchy plugin add clones the whole repository as the plugin
               # folder, so scanning two globs under the built package missed
               # README.md, docs/, manifest.json, microvm-binds.lua and
@@ -216,6 +224,25 @@
               test -d ${self}/docs/img || { echo "docs/img is missing" >&2; exit 1; }
               size=$(du -sb ${self}/docs/img | cut -f1)
               [ "$size" -le 8388608 ] || { echo "docs/img is $size bytes, over 8 MB" >&2; exit 1; }
+
+              # check: docs-sync
+              # flake.nix is the source of truth for what nix flake check
+              # enforces. AGENTS.md's Rules section claims each one with a
+              # (checked: <name>) marker, and the two lists must agree, so a
+              # check added without documenting it -- or a rule claiming a
+              # check that no longer exists -- fails here instead of quietly
+              # drifting. The extractor cannot match itself: its own pattern
+              # text is # check: [a-z-]+, and [ is not in [a-z-].
+              # || true on both: grep exits 1 when it matches nothing, which
+              # under set -e would kill the build before the diagnostic below
+              # ever prints.
+              { grep -oE '^[[:space:]]*# check: [a-z-]+' ${self}/flake.nix || true; } \
+                | awk '{print $NF}' | sort -u > names
+              { grep -oE '\(checked: [a-z-]+\)' ${self}/AGENTS.md || true; } \
+                | tr -d '()' | awk '{print $2}' | sort -u > claimed
+              comm -23 names claimed | sed 's/^/check /;s/$/ is not documented in AGENTS.md/' >&2
+              comm -13 names claimed | sed 's/^/(checked: /;s/$/) names no block in flake.nix/' >&2
+              [ -z "$(comm -3 names claimed)" ] || exit 1
 
               touch "$out"
             '';

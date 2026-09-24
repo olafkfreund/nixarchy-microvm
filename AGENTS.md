@@ -54,7 +54,7 @@ form, never for an action.
 
 ```bash
 node tests/run.js                              # Model tests
-nix flake check                                # tests + manifest, entry points, no symlinks, no pacman/yay, no hex colours
+nix flake check                                # everything flake.nix enforces; each block names itself
 nix flake check --all-systems --no-build       # aarch64 evaluates
 nix build                                      # the plugin folder, exactly as nixarchy links it
 omarchy plugin validate "$(readlink -f result)"
@@ -158,16 +158,37 @@ host's own permanent machine and the wallpaper:
 
 ## Rules
 
-Each rule records a real failure or a hard constraint:
+Each rule records a real failure or a hard constraint. A rule carrying
+`(checked: <name>)` is enforced by the `# check: <name>` block of that name in
+`flake.nix`, which is the source of truth for what `nix flake check` does; the
+`docs-sync` check fails if the two lists ever disagree. `(by hand)` means what
+it says.
 
-- **No symlinks anywhere in the repository.** `omarchy plugin add` clones this repo
+The checks with no rule of their own here: `(checked: tests)` runs
+`tests/selftest.js` and `tests/run.js`; `(checked: manifest)`,
+`(checked: entry-points)` and `(checked: schema)` assert the manifest loads,
+its entry points exist, and `schema.json` is strict with no `$schema` key;
+`(checked: binds)` keeps the default chord verbatim in `microvm-binds.lua`;
+`(checked: img-budget)` holds `docs/img` under 8 MB; and `(checked: docs-sync)`
+is the check that keeps this paragraph honest.
+
+
+- **No symlinks anywhere in the repository.** *(checked: symlinks)* `omarchy plugin add` clones this repo
   *as* the plugin folder, and `omarchy-plugin-validate` refuses any symlink inside
   it. That is why `CLAUDE.md` imports `AGENTS.md` instead of linking to it.
-- **No hardcoded colours.** Use `Color.*`, `Style.*` and `Border.*` tokens, so themes
-  switch cleanly. `nix flake check` fails on `"#rrggbb"`.
-- **No `pacman` or `yay`**, not even in comments. nixarchy fails the rebuild on them.
+- **No hardcoded colours.** *(checked: colours)* Use `Color.*`, `Style.*` and
+  `Border.*` tokens, so themes switch cleanly. Hex in either quote style, a CSS
+  colour function in a string, a bare colour name and an all-literal `Qt.rgba`
+  all fail, in `*.qml` and `Model.js`. `"transparent"` and a `Qt.rgba` derived
+  from a token are allowed.
+- **No `pacman` or `yay`**, not even in comments. *(checked: pacman)* nixarchy
+  fails the rebuild on them. The whole clone is scanned except `intent/`,
+  `spec/`, `plan/`, `flake.nix` and the allow-list itself; every other
+  legitimate occurrence is one reviewable line in `tests/pacman-allowed.txt`.
 - **A new runtime file goes in the `files` list in `flake.nix`**, or it is not in
-  the package.
+  the package. *(checked: files-list)* The repository root minus a deny-list must
+  equal the package, both ways, so an unrecognised new root file fails until
+  someone classifies it.
 - **Run external commands by name from `PATH`.** The one exception is
   nixarchy.pkg's adapter, which is not on `PATH` and is resolved at
   `$XDG_CONFIG_HOME/omarchy/plugins/nixarchy.pkg/bin/nixarchy-pkg`, and every
@@ -195,6 +216,9 @@ Each rule records a real failure or a hard constraint:
 - **One mutation at a time, via the singleton.** Start, stop, restart, create, edit
   and delete are refused while another mutation runs, from either surface. Listing,
   console, logs, copy, apply and the agent call never lock.
+- **One `singleton MicrovmState` line in `qmldir`.** *(checked: singleton)*
+  Without it the bar and the menu each get their own state, and "one mutation at
+  a time" silently stops holding.
 - **Lists read through a QObject `var` property are Qt sequence wrappers, not JS
   arrays.** Check `length`, not `Array.isArray` (see `Model.settingsFor`).
 - **The surfaces are keep-loaded.** `open()` resets the view and then focuses

@@ -14,9 +14,8 @@ jobs:
         with:
           extra_nix_config: "experimental-features = nix-command flakes"
 
-      # The Model tests, the manifest and its entry points, the singleton
-      # declaration, no symlinks, no pacman/yay and no hardcoded colours --
-      # all inside the flake check.
+      # Everything flake.nix enforces; each block there names itself with a
+      # "# check: <name>" line, and AGENTS.md's rules claim those names.
       - run: nix flake check --print-build-logs
 
       # aarch64 is evaluated, not built: there is no aarch64 runner here.

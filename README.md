@@ -233,7 +233,7 @@ The menu has the same `status` hook:
 
 ```bash
 node tests/run.js                              # Model tests
-nix flake check                                # tests + manifest, schema, singleton, no symlinks, no pacman/yay, no hex colours
+nix flake check                                # everything flake.nix enforces; each block names itself
 nix flake check --all-systems --no-build
 nix build && omarchy plugin validate "$(readlink -f result)"
 ```
