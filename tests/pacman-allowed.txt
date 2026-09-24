@@ -1,0 +1,18 @@
+## Lines that legitimately name the two Arch package managers: the rule's own
+## text in the documents that state it. Trimmed exact content, matched with
+## grep -qxF. '##' starts a comment here, not '#', because the lines being
+## exempted are themselves comments in YAML.
+##
+## Not listed, excluded as classes instead, because each grows or churns
+## without bound: intent/, spec/ and plan/ are design history that quotes the
+## rule to reason about it (34 of the repository's 39 matching lines); and
+## flake.nix and this file each necessarily contain the pattern they exist to
+## search for.
+##
+## A new line anywhere else fails the check until it is removed, or added here
+## as a deliberate, reviewable entry.
+
+# declaration, no symlinks, no pacman/yay and no hardcoded colours --
+nix flake check                                # tests + manifest, entry points, no symlinks, no pacman/yay, no hex colours
+- **No `pacman` or `yay`**, not even in comments. nixarchy fails the rebuild on them.
+nix flake check                                # tests + manifest, schema, singleton, no symlinks, no pacman/yay, no hex colours

@@ -157,9 +157,34 @@
               fi
 
               # nixarchy's own plugin validation fails the rebuild on these.
-              if grep -nwE 'pacman|yay' ${plugin}/*.qml ${plugin}/*.js; then
-                echo "Arch package manager reference above" >&2; exit 1
-              fi
+              # check: pacman
+              # omarchy plugin add clones the whole repository as the plugin
+              # folder, so scanning two globs under the built package missed
+              # README.md, docs/, manifest.json, microvm-binds.lua and
+              # share/. The scan is the whole clone now, minus the artifact
+              # directories, which quote the rule to reason about it and grow
+              # without bound -- 34 of the repository's 39 matching lines live
+              # there. Everything else is exempted line by line, so a real
+              # pacman -S in README.md still fails.
+              # flake.nix and the allow-list are excluded for the same
+              # reason: each necessarily contains the pattern it exists to
+              # search for, and listing their lines would mean editing the
+              # allow-list every time the check itself is touched.
+              grep -IrnwE --exclude-dir=intent --exclude-dir=spec --exclude-dir=plan \
+                --exclude=pacman-allowed.txt --exclude=flake.nix \
+                'pacman|yay' ${self} | sed "s|^${self}/||" > hits || true
+              # '##' starts a comment in the allow-list, not '#', because the
+              # lines being exempted are themselves comments in YAML and Nix.
+              grep -v '^##' ${./tests/pacman-allowed.txt} \
+                | grep -v '^[[:space:]]*$' > allowed || true
+              pacman_hit=
+              while IFS= read -r hit; do
+                text=$(printf '%s' "$hit" | cut -d: -f3- | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                # -- because an exempted line may begin with a dash, which
+                # grep would otherwise read as an option.
+                grep -qxF -- "$text" allowed || { echo "$hit" >&2; pacman_hit=1; }
+              done < hits
+              [ -z "$pacman_hit" ] || { echo "Arch package manager reference above" >&2; exit 1; }
 
               # check: colours
               # A literal colour survives a theme switch and looks wrong. The
