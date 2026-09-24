@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 22
 intent: intent/2026-09-24-22-nix-emitter-safety.md
 ---
