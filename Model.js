@@ -1485,6 +1485,25 @@ function agentPrompt(text, templates) {
   return lines.join("\n")
 }
 
+// Every balanced {…} in the text, as [start, end] with end past the closing
+// brace. String-aware: a brace inside a JSON string is text, not depth, or
+// `{"a":"}"}` comes back truncated. Unmatched `{` are dropped.
+function braceSpans(text) {
+  var s = String(text), stack = [], out = [], inString = false, escaped = false
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charAt(i)
+    if (escaped) { escaped = false; continue }
+    if (c === "\\") { if (inString) escaped = true; continue }
+    if (c === "\"") { inString = !inString; continue }
+    if (inString) continue
+    if (c === "{") stack.push(i)
+    else if (c === "}" && stack.length) out.push([stack.pop(), i + 1])
+  }
+  return out
+}
+
+var MAX_CANDIDATES = 64
+
 function parseObject(text) {
   try {
     var v = JSON.parse(String(text))
@@ -1502,13 +1521,19 @@ function parseAgentReply(raw) {
   var env = parseObject(text)
   if (!env) {
     // Prose around JSON: the outermost {…} that parses and looks like a
-    // proposal. Tiny input, so the quadratic scan costs nothing.
-    for (var start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
-      for (var e = text.length; e > start; e--) {
-        if (text.charAt(e - 1) !== "}") continue
-        var candidate = parseObject(text.substring(start, e))
-        if (candidate && ("kind" in candidate || "name" in candidate)) return candidate
-      }
+    // proposal. This runs on the UI thread from a .pragma library and the
+    // reply is untrusted data, so the old nested loop -- JSON.parse over an
+    // O(n) substring, twice nested -- froze both surfaces for 25 s on a 4 KB
+    // reply. braceSpans is one linear string-aware pass; spans are tried
+    // outermost-first, which is the order the old loop found them in.
+    // ponytail: MAX_CANDIDATES is the ceiling on the parsing, not the scan.
+    // Raise it if a real reply is ever found to need more than 64 candidates.
+    var spans = braceSpans(text)
+    spans.sort(function(a, b) { return a[0] - b[0] || b[1] - a[1] })
+    var tried = spans.length < MAX_CANDIDATES ? spans.length : MAX_CANDIDATES
+    for (var i = 0; i < tried; i++) {
+      var candidate = parseObject(text.substring(spans[i][0], spans[i][1]))
+      if (candidate && ("kind" in candidate || "name" in candidate)) return candidate
     }
     return null
   }
