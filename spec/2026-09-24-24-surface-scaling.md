@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 24
 intent: intent/2026-09-24-24-surface-scaling.md
 ---
@@ -245,7 +245,63 @@ present size on DP-1 and starts shrinking on 1080p. The existing
 `nixarchy.pkg/Menu.qml:158`; matching it is not required, since our card is a third
 narrower.)
 
+### 4a. Amendment: removed, and replaced by a role ladder (#27)
+
+**This supersedes §4 below, which is kept because its evidence is still good and
+its conclusion is still half right.** §4 removed the transform and stopped. That
+is incomplete: the factor existed because a full-screen surface is read from
+further away, and deleting it leaves the menu at bar-popup text size.
+nixarchy.devenv shipped exactly this deletion and filed a regression against
+itself (nixarchy-devenv#37); nixarchy.distrobox reached the replacement
+independently. Filed here as #27.
+
+**The replacement is not a multiplier.** `MicrovmView` gains a
+`property bool large: false`, and each named text role resolves to a rung of the
+host's own font ladder — one rung higher when `large`. `Menu.qml` passes
+`large: true`; `Panel.qml` passes nothing, so the popup keeps the base rungs.
+Every rung derives from `[font] base-size`, so the menu moves *with* the desktop
+text size instead of pulling a fixed percentage away from it, and nothing is
+magnified after layout.
+
+§4's objection — that the host kit exposes no knob, so a multiplier would grow
+this repo's text and leave `PanelHero` and `ConfirmDialog` behind — was reasoned
+from "the file hardcodes sizes" without checking *which element uses which rung*.
+Checked (nixarchy.devenv, verified on the owner's display with both components
+unmodified):
+
+| Element | Hardcoded | At `large` |
+| --- | --- | --- |
+| `ConfirmDialog` message (`:76-79`) | `Style.font.title` | matches |
+| `PanelHero` title (`:57`) | `Style.font.title` | matches |
+| `ConfirmDialog` buttons (`:110-114`) | `caption` | one rung low |
+| `PanelHero` meta/detail (`:84`, `:98`) | `body` / `caption` | one rung low |
+
+The primary text in both host components already lands on the large rung,
+because `title` is where the `caption` role climbs to. What is left is two button
+captions and a meta line sitting one rung low — a polish gap, not the half-grown
+surface §4 rejected a multiplier over. The mapping must therefore send
+`caption → title` for this to hold; that is a requirement of this amendment, not
+an accident.
+
+**The width is settled in the same change, or not at all.** `viewWidth` was
+`Style.space(680)` *because* 1.45 stretched it to ~986: the number was written to
+be multiplied. nixarchy-devenv#37 removed the multiplier and left the width, and
+shipped a menu a third narrower — every check passed and the live check confirmed
+the text looked right, which it did. §3 of this spec already replaces `viewWidth`
+with `cardWidth(panel.width, 0.55, space(560), space(1100))`, which measures
+wider than 986 on every monitor this host has (1100 on the 2560s, 1056 on the
+1920) and narrower only on a small laptop (751 on a 1366). That is retained; the
+1366 case is recorded on PR #31 as a behaviour change on untested hardware.
+
+**Not separable from the removal.** Reverting the removal alone now yields
+`round(1100 × 1.45)` = a 1595 px magnified card, because §3 already made
+`viewWidth` screen-derived. The transform removal and the role ladder are one
+change.
+
 ### 4. The 1.45× — removed, with no replacement factor
+
+*(Superseded by §4a. The evidence below is accurate and was re-verified on disk;
+the conclusion "no replacement" is what §4a corrects.)*
 
 Settling the intent's first open question: **the menu keeps no magnification
 factor at all.** `Menu.qml:30`, the `scale:`/`transformOrigin` pair at `:141-142`
