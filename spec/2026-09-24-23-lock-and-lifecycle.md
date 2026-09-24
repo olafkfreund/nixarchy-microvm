@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 23
 intent: intent/2026-09-24-23-lock-and-lifecycle.md
 ---
