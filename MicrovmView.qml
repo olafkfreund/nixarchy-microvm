@@ -124,6 +124,8 @@ FocusScope {
   // Focusing it is therefore how a question takes the keyboard *away from the
   // filter*, which is the whole fix.
   function focusForMode() {
+    // A Qt.callLater can land after the view is destroyed, when the Model import is null.
+    if (!Model) return
     var target = Model.focusTarget({ mode: root.mode, confirmOpen: root.confirmOpen })
     if (target === "log") logView.forceActiveFocus()
     else if (target === "form") createForm.focusCurrent()
