@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 // The create and edit form, both kinds. Keyboard only, the way nixarchy-pkg's
@@ -24,7 +25,7 @@ FocusScope {
   // MicrovmState.featureState: decides whether the describe field exists.
   property var features: ({})
   property string hostHome: ""
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property string fontFamily: Style.font.family
   property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
   readonly property color dim: Qt.darker(foreground, 1.5)
@@ -262,7 +263,7 @@ FocusScope {
         anchors.verticalCenter: parent.verticalCenter
         text: root.form.editing ? Model.Glyph.edit : Model.Glyph.plus
         textFormat: Text.PlainText
-        color: Color.accent
+        color: Commons.Color.accent
         font.family: root.fontFamily
         font.pixelSize: root.fontSize.iconSmall
       }
@@ -375,7 +376,7 @@ FocusScope {
                   text: fieldItem.modelData.widget === "kind" ? "⇄" : (root.form[fieldItem.modelData.key] === true ? "■" : "□")
                   textFormat: Text.PlainText
                   color: fieldItem.modelData.widget === "bool" && root.form[fieldItem.modelData.key] === true
-                    ? Color.accent : root.dim
+                    ? Commons.Color.accent : root.dim
                   font.family: root.fontFamily
                   font.pixelSize: root.fontSize.body
                 }
@@ -399,7 +400,7 @@ FocusScope {
                 width: parent.width
                 text: root.blocked
                 textFormat: Text.PlainText
-                color: Color.urgent
+                color: Commons.Color.urgent
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
@@ -452,7 +453,7 @@ FocusScope {
                       (modelData.name !== undefined ? modelData.name + "   " + modelData.label + " — " + modelData.note
                         : modelData.file + "   " + modelData.key)
                     textFormat: Text.PlainText
-                    color: index === root.listIndex ? Color.accent : root.dim
+                    color: index === root.listIndex ? Commons.Color.accent : root.dim
                     font.family: root.fontFamily
                     font.pixelSize: root.fontSize.caption
                     elide: Text.ElideRight
@@ -472,7 +473,7 @@ FocusScope {
                 text: root.thinking ? "asking " + (root.features.agent || "the agent") + "…   esc cancels"
                   : (root.agentError !== "" ? root.agentError : root.reasoning)
                 textFormat: Text.PlainText
-                color: root.agentError !== "" && !root.thinking ? Color.urgent : (root.thinking ? Color.accent : root.dim)
+                color: root.agentError !== "" && !root.thinking ? Commons.Color.urgent : (root.thinking ? Commons.Color.accent : root.dim)
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
@@ -485,7 +486,7 @@ FocusScope {
                   : (fieldItem.isCurrent && fieldItem.warning !== "" ? fieldItem.warning
                   : (fieldItem.isCurrent && !fieldItem.takesText && fieldItem.modelData.hint ? fieldItem.modelData.hint : ""))
                 textFormat: Text.PlainText
-                color: fieldItem.error !== "" ? Color.urgent : root.dim
+                color: fieldItem.error !== "" ? Commons.Color.urgent : root.dim
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.caption
                 wrapMode: Text.WordWrap
