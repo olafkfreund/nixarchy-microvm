@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 // The bar widget: a glyph that keeps an eye on your VMs, and a keyboard popup
@@ -20,7 +21,7 @@ Panel {
   readonly property bool hideWhenEmpty: setting("hideWhenEmpty", false) === true
   readonly property bool aiAssist: setting("aiAssist", true) === true
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   function pushSettings() {
@@ -86,7 +87,7 @@ Panel {
     dimmed: MicrovmState.counts.running === 0
     active: MicrovmState.counts.running > 0 || MicrovmState.mutating
     useActiveColor: true
-    activeColor: MicrovmState.counts.failing > 0 ? Color.urgent : Color.accent
+    activeColor: MicrovmState.counts.failing > 0 ? Commons.Color.urgent : Commons.Color.accent
     tooltipText: "MicroVMs · " + Model.summaryText(MicrovmState.allRows, MicrovmState.reachable)
 
     onPressed: function(b) {

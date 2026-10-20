@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 // The list of VMs, both kinds. Rows come from Model.rowsFor; the ListModel is
@@ -22,7 +23,7 @@ Item {
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
 
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property string fontFamily: Style.font.family
   property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
 
@@ -147,8 +148,8 @@ Item {
         radius: width / 2
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        color: rowSurface.row.failing ? Color.urgent
-          : (rowSurface.row.up ? Color.accent : "transparent")
+        color: rowSurface.row.failing ? Commons.Color.urgent
+          : (rowSurface.row.up ? Commons.Color.accent : "transparent")
         border.width: !rowSurface.row.up && !rowSurface.row.failing ? 1 : 0
         border.color: root.dim
 
@@ -195,14 +196,14 @@ Item {
             radius: Style.space(3)
             color: "transparent"
             border.width: 1
-            border.color: rowSurface.row.kind === "permanent" ? Color.accent : root.dim
+            border.color: rowSurface.row.kind === "permanent" ? Commons.Color.accent : root.dim
 
             Text {
               id: kindText
               anchors.centerIn: parent
               text: rowSurface.row.kind
               textFormat: Text.PlainText
-              color: rowSurface.row.kind === "permanent" ? Color.accent : root.dim
+              color: rowSurface.row.kind === "permanent" ? Commons.Color.accent : root.dim
               font.family: root.fontFamily
               font.pixelSize: root.fontSize.caption
             }
@@ -227,8 +228,8 @@ Item {
           text: rowSurface.rowPending ? root.pendingVerb + "…"
             : (rowSurface.row.up && !rowSurface.row.pending ? "" : rowSurface.row.status)
           textFormat: Text.PlainText
-          color: rowSurface.rowPending || rowSurface.row.pending ? Color.accent
-            : (rowSurface.row.failing ? Color.urgent : root.dim)
+          color: rowSurface.rowPending || rowSurface.row.pending ? Commons.Color.accent
+            : (rowSurface.row.failing ? Commons.Color.urgent : root.dim)
           font.family: root.fontFamily
           font.pixelSize: root.fontSize.caption
           elide: Text.ElideRight
@@ -253,7 +254,7 @@ Item {
             iconText: modelData.glyph
             tooltipText: modelData.tooltip
             foreground: root.foreground
-            hoverColor: modelData.danger ? Color.urgent : root.foreground
+            hoverColor: modelData.danger ? Commons.Color.urgent : root.foreground
             fontFamily: root.fontFamily
             fontSize: root.fontSize.iconSmall
             size: Style.space(22)
