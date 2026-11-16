@@ -23,7 +23,7 @@ nav:
   - { path: /usage/#install-on-nixos-nixarchy,  title: Install on NixOS }
   - { path: /usage/#install-without-nix,        title: Install without Nix }
   - { path: /usage/#the-bar-popup,              title: The bar popup }
-  - { path: /usage/#the-full-screen-menu,       title: The full-screen menu }
+  - { path: /usage/#the-menu,                   title: The menu }
   - { path: /usage/#everyday-tasks,             title: Everyday tasks }
   - { path: /usage/#ai-assist,                  title: AI assist }
   - { path: /usage/#settings,                   title: Settings }

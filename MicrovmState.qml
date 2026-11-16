@@ -56,11 +56,19 @@ Singleton {
   //
   // Detected, never assumed. Probed once per open (and once for the bar).
 
-  property bool vmJson: false
-  property var features: ({ vmDetach: false, vmConsole: false, vmSetTemplate: false })
+  // Every action waits for both probes; one verdict says what to update.
+  property bool helpDone: false
+  property bool optDone: false
+  property bool pkgDone: false
+  property string helpText: ""
+  property string optReply: ""
+  property bool listTooOld: false
   // nixarchy.pkg's adapter, or "" when that plugin is not installed.
   property string pkgScript: ""
-  property bool optReplace: false
+  readonly property bool upstreamReady: helpDone && pkgDone && (optDone || !pkgScript)
+  readonly property string upstreamError: listTooOld
+    ? Model.upstreamVerdict("", "", false)   // the nixarchy#762 message: list --json came with it
+    : (upstreamReady ? Model.upstreamVerdict(helpText, optReply, !!pkgScript) : "")
   // services.nix has the microvm row (null until read), or
   // nixarchy-service-enable adds a missing one itself (nixarchy#843). #6.
   property var servicesRow: null
@@ -73,11 +81,9 @@ Singleton {
 
   readonly property var featureState: ({
     mutating: root.mutating,
-    vmDetach: root.features.vmDetach === true,
-    vmConsole: root.features.vmConsole === true,
-    vmSetTemplate: root.features.vmSetTemplate === true,
+    upstreamOk: root.upstreamReady && root.upstreamError === "",
+    upstreamError: root.upstreamError,
     pkgScript: root.pkgScript,
-    optReplace: root.optReplace,
     agent: root.agent,
     aiAssist: root.aiAssist,
     schemaLoaded: root.schemaText !== "",
@@ -122,6 +128,9 @@ Singleton {
   property bool everLoaded: false
   // A poll that failed after a good one keeps its rows and says so.
   property bool listOk: false
+  property int listGen: 0
+  property int listReadGen: 0
+  property bool lastListOk: false
   property bool vmsStale: false
   property string listError: ""
   property string lastError: ""
@@ -149,7 +158,9 @@ Singleton {
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
-  readonly property bool mutating: actionProcess.running || streamProcess.running || queue.length > 0
+  property var next: null
+  property bool abandoning: false
+  readonly property bool mutating: actionProcess.running || streamProcess.running || queue.length > 0 || next !== null
 
   // --------------------------------------------------------------- stream
 
@@ -167,14 +178,20 @@ Singleton {
 
   // -------------------------------------------------------------- refresh
 
-  function refresh() {
-    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
+  function refreshList() {
     if (!listProcess.running) {
       root.loading = true
       root.polls += 1
+      root.listGen += 1
+      root.listReadGen = root.listGen
       listProcess.command = Model.listArgv()
       listProcess.running = true
     }
+  }
+
+  function refresh() {
+    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
+    root.refreshList()
     if (!unitsProcess.running) {
       unitsProcess.command = Model.unitsArgv()
       unitsProcess.running = true
@@ -225,9 +242,11 @@ Singleton {
 
   function launch(proc, argv) {
     root.pendingCommand = Model.commandName(argv)
-    root.escapable = false
-    escapeTimer.stop()
-    if (proc === actionProcess) escapeTimer.restart()
+    if (root.next === null) {
+      root.escapable = false
+      escapeTimer.stop()
+      if (proc === actionProcess) escapeTimer.restart()
+    }
     proc.stdinEnabled = true
     proc.command = argv
     proc.running = true
@@ -237,14 +256,20 @@ Singleton {
 
   // Every mutation comes through here. Refuses, with a reason, while anything
   // else mutates; the argv is null when an input failed validation.
-  function run(argvs, verb, key) {
+  function run(argvs, verb, key, nextStep) {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argvs || argvs.length === 0) return false
     for (var i = 0; i < argvs.length; i++) if (!argvs[i]) return false
     root.lastError = ""
+    root.next = nextStep || null
+    root.abandoning = false
+    root.escapable = false
     root.pendingVerb = verb
     root.pendingKey = key || ""
     root.queue = argvs.slice(1)
+    escapeTimer.restart()
+    if (root.next && root.next.kind === "wait") deadlineTimer.restart()
     root.launch(actionProcess, argvs[0])
     return true
   }
@@ -276,27 +301,82 @@ Singleton {
 
   function remove(row) {
     if (!allowed(row, "remove")) return false
+    if (row.kind === "disposable" && row.runtime === "running")
+      return run([Model.stopVmArgv(row.name)], "deleting", row.key,
+        { kind: "wait", name: row.name, since: Date.now(), resent: false })
     var argv = row.kind === "permanent" ? Model.optRemoveArgv(row.name) : Model.rmVmArgv(row.name)
     return run([argv], "deleting", row.key)
   }
 
   // A submitted form: create (one or two commands) or edit (one).
-  function submit(form) {
+  property string submitOwner: ""
+  signal permanentWritten(string name, string owner)
+
+  function submit(form, owner) {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     var argvs = Model.submitArgvs(form, root.allRows, root.templates, root.home, root.featureState)
     if (!argvs) { root.lastError = Model.permanentBlocked(form, root.featureState) || "Nothing was written: the form or a needed feature is missing"; return false }
-    return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
+    var key = Model.rowKey(form.kind, form.name)
+    var name = Model.startAfterCreate(form)
+    if (!name) {
+      if (!run(argvs, form.editing ? "editing" : "creating", key)) return false
+      root.submitOwner = owner || ""   // step 8's Apply now asks only the submitting surface
+      return true
+    }
+    if (!run(argvs, "creating", key, { kind: "stream", name: name })) return false
+    root.submitOwner = owner || ""
+    root.streamTitle = "create " + name
+    root.streamExit = -1
+    root.log = ["$ create " + name]
+    root.pendingLines = []
+    return true
+  }
+
+  function beginStream(argv, title, keepLog) {
+    root.lastError = ""
+    root.streamTitle = title
+    root.streamExit = -1
+    root.log = keepLog ? Model.capLog(root.log, ["$ " + title]) : ["$ " + title]
+    root.pendingLines = []
+    root.launch(streamProcess, argv)
+    return true
   }
 
   function startStream(argv, title) {
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argv) return false
-    root.lastError = ""
-    root.streamTitle = title
-    root.streamExit = -1
-    root.log = ["$ " + title]
-    root.pendingLines = []
-    root.launch(streamProcess, argv)
-    return true
+    return root.beginStream(argv, title, false)
+  }
+
+  // The end of a chained action, success or failure: everything run() set up.
+  function finishAction() {
+    waitTimer.stop()
+    deadlineTimer.stop()
+    root.pendingVerb = ""
+    root.pendingKey = ""
+    root.escapable = false
+    escapeTimer.stop()
+    if (root.active || root.background) root.refresh()
+  }
+
+  function advance(decision) {
+    if (root.next === null) return
+    var step = decision
+    if (step.do === "stream") root.beginStream(Model.runDetachArgv(step.name), "run " + step.name, true)
+    else if (step.do === "rm") { deadlineTimer.stop(); waitTimer.stop(); root.launch(actionProcess, Model.rmVmArgv(step.name)) }
+    else if (step.do === "stop") root.launch(actionProcess, Model.stopVmArgv(step.name))
+    else if (step.do === "wait") waitTimer.restart()
+    else if (step.do === "fail") { root.lastError = step.message; root.finishAction() }
+    else if (step.do === "done") root.finishAction()
+    root.next = step.next
+  }
+
+  function onListResult() {
+    if (!root.next || root.next.kind !== "wait" || actionProcess.running) return
+    root.advance(Model.continueAfter(root.next, {
+      type: "tick", listOk: root.lastListOk, listGen: root.listReadGen,
+      stopped: Model.isStopped(root.vms, root.next.name), now: Date.now()
+    }))
   }
 
   // A nix build emits thousands of lines. Appending each one reassigned a var
@@ -333,12 +413,48 @@ Singleton {
   // says the process is gone, so a release can never race a live opt set.
   Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
   Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
+  // Each tick asks for a fresh list, and also checks the clock on its own, so
+  // the 30 s re-send and the limit never wait on a list read that hangs.
+  Timer {
+    id: waitTimer
+    interval: 2000
+    onTriggered: {
+      root.refreshList()
+      if (root.next && root.next.kind === "wait" && !actionProcess.running)
+        root.advance(Model.continueAfter(root.next, { type: "tick", listOk: false, listGen: 0, stopped: false, now: Date.now() }))
+    }
+  }
+  Timer {
+    id: deadlineTimer
+    interval: 90000
+    onTriggered: {
+      if (!root.next || root.next.kind !== "wait") return
+      var name = root.next.name
+      root.abandon()
+      root.lastError = name + " did not stop within 90 s; nothing was deleted"
+    }
+  }
 
   function abandon() {
-    if (!actionProcess.running) return
-    root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
-    actionProcess.signal(15)
-    killTimer.restart()
+    if (!actionProcess.running && root.next === null) return
+    if (root.next !== null) {
+      // Only before rm starts is it certain that nothing was deleted.
+      var why = Model.abandonMessage(root.next, root.pendingVerb)
+      waitTimer.stop()
+      deadlineTimer.stop()
+      root.next = null
+      root.lastError = why
+      root.abandoning = true
+    } else root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
+    if (actionProcess.running) {
+      actionProcess.signal(15)
+      killTimer.restart()
+    } else {
+      root.pendingVerb = ""
+      root.pendingKey = ""
+      root.escapable = false
+      escapeTimer.stop()
+    }
   }
 
   Timer {
@@ -360,10 +476,6 @@ Singleton {
   //
   // Terminals. None of these is tracked: the terminal owns the process.
 
-  // Said once per session, the first time a VM is started in a terminal.
-  property string notice: ""
-  property bool terminalNoticeShown: false
-
   function detach(argv) {
     if (!argv) return false
     Quickshell.execDetached(argv)
@@ -375,21 +487,12 @@ Singleton {
     return detach(row.kind === "permanent" ? Model.sshArgv(row.sshPort, row.sshKey, root.sshKeys, root.home) : Model.consoleArgv(row.name))
   }
 
-  // "Start in terminal": today's `nixarchy vm run`, held by that terminal.
-  function startTerminal(row) {
-    if (!allowed(row, "startTerminal")) return false
-    if (!root.terminalNoticeShown) {
-      root.terminalNoticeShown = true
-      root.notice = "started in a terminal: it builds and boots there, and closing that terminal stops the VM"
-    }
-    return detach(Model.runTerminalArgv(row.name))
-  }
-
   function logs(row) {
     return !!Model.actionFor(row, root.featureState, "logs") && detach(Model.logsArgv(row.name))
   }
 
   function apply() {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     return detach(Model.applyTerminalArgv())
   }
 
@@ -488,10 +591,8 @@ Singleton {
       streaming: root.streaming,
       stream: root.streamTitle,
       thinking: root.thinking,
-      vmJson: root.vmJson,
-      features: root.features,
+      upstreamError: root.upstreamError,
       pkgScript: root.pkgScript,
-      optReplace: root.optReplace,
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
@@ -516,6 +617,7 @@ Singleton {
     onExited: function(code) {
       root.loading = false
       root.everLoaded = true
+      root.lastListOk = code === 0 && !Model.isTooOldList(listOut.text)
       if (code !== 0) {
         if (!root.listOk && Model.trim(listErr.text) === "") {
           root.reachable = false
@@ -527,14 +629,16 @@ Singleton {
           root.vmsStale = root.listOk
           root.listError = Model.listFailure(listErr.text, code)
         }
+        root.onListResult()
         return
       }
       root.listOk = true
       root.vmsStale = false
       root.listError = ""
       root.reachable = true
-      root.vmJson = Model.isJsonList(listOut.text)
-      root.vms = Model.parseVmList(listOut.text)
+      root.listTooOld = !root.lastListOk
+      root.vms = root.listTooOld ? [] : Model.parseVmList(listOut.text)
+      root.onListResult()
     }
   }
 
@@ -574,20 +678,19 @@ Singleton {
     id: helpProcess
     stdout: StdioCollector { id: helpOut; waitForEnd: true }
     stderr: StdioCollector { id: helpErr; waitForEnd: true }
-    // Some tools print usage on stderr. Reading stdout alone would have made
-    // all three features silently false and removed three keys with no reason
-    // given, indistinguishable from an old nixarchy.
+    // Some tools print usage on stderr: read both.
     onExited: function(code) {
       var text = Model.trim(helpOut.text + "\n" + helpErr.text)
-      if (text) { root.features = Model.detectFeatures(text); root.helpStale = false }
+      if (text) { root.helpText = text; root.helpStale = false }
       else root.helpStale = true
+      root.helpDone = true
     }
   }
 
   Process {
     id: optProbe
     stdout: StdioCollector { id: optOut; waitForEnd: true }
-    onExited: function(code) { root.optReplace = Model.optReplaceSupported(optOut.text) }
+    onExited: function(code) { root.optReply = optOut.text; root.optDone = true }
   }
 
   // Today --help is taken as a service id: it only greps and complains, on
@@ -621,13 +724,18 @@ Singleton {
     path: Model.pkgScriptPath(root.configHome)
     printErrors: false
     onLoaded: {
+      var changed = root.pkgScript !== path
       root.pkgScript = path
+      root.pkgDone = true
+      // A re-probe of the same path keeps the last verdict until the new one
+      // lands, so actions do not flicker away every probe.
+      if (changed) { root.optDone = false; root.optReply = "" }
       if (!optProbe.running) {
         optProbe.command = Model.optProbeArgv(path)
         optProbe.running = true
       }
     }
-    onLoadFailed: { root.pkgScript = ""; root.optReplace = false }
+    onLoadFailed: { root.pkgScript = ""; root.optReply = ""; root.pkgDone = true }
   }
 
   // The permanent machines this plugin may edit, straight from the file
@@ -684,8 +792,17 @@ Singleton {
       // nixarchy-pkg's writers exit 0 and say no in JSON instead.
       var refused = Model.writerError(actionOut.text)
       var failed = code !== 0 || refused !== ""
+      if (root.next && root.next.kind === "stream") {
+        root.log = Model.capLog(root.log, (actionOut.text + "\n" + actionErr.text).split("\n").filter(function(l) { return l !== "" }))
+        // The stream never starts, so the log gets the create's own end line.
+        if (failed) { root.streamExit = code || 1; root.log = Model.capLog(root.log, ["── exit " + (code || 1) + " · failed"]) }
+      }
+      if (root.next && root.next.kind === "wait" && !root.next.resending)
+        root.next = Object.assign({}, root.next, { afterGen: root.listGen })
+      var decision = Model.continueAfter(root.next, { type: "exit", ok: !failed, phase: root.next && root.next.resending ? "resend" : root.pendingCommand })
+      if (decision.do === "fail" || decision.do === "done") { waitTimer.stop(); deadlineTimer.stop() }
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
-      if (failed) {
+      if (failed && !root.abandoning && decision.do !== "wait") {
         var why = Model.processFailure({
           verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
           command: root.pendingCommand, code: code,
@@ -697,9 +814,24 @@ Singleton {
         root.lastError = why
         root.queue = []
       }
-      root.escapable = false
-      escapeTimer.stop()
+      if (decision.do === "fail") root.next = null
+      if (root.next === null) {
+        root.escapable = false
+        escapeTimer.stop()
+      }
       killTimer.stop()
+      if (root.abandoning) {
+        root.abandoning = false
+        root.pendingVerb = ""
+        root.pendingKey = ""
+        if (root.active || root.background) root.refresh()
+        return
+      }
+      if (root.next !== null && root.queue.length === 0 && decision.do !== "fail") {
+        var currentStep = root.next
+        Qt.callLater(function() { if (root.next === currentStep) root.advance(decision) })
+        return
+      }
       if (root.queue.length > 0) {
         // Started on the next tick, not from inside this process's own exit.
         // The queue is only consumed in the same synchronous step that starts
@@ -713,6 +845,9 @@ Singleton {
         })
         return
       }
+      if (Model.offerApply(root.pendingVerb, root.pendingKey, failed))
+        root.permanentWritten(Model.pendingName(root.pendingKey), root.submitOwner)
+      root.next = null
       root.pendingVerb = ""
       root.pendingKey = ""
       if (root.active || root.background) root.refresh()
@@ -735,6 +870,11 @@ Singleton {
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
       root.flushLog()
       if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
+      root.next = null
+      root.pendingVerb = ""
+      root.pendingKey = ""
+      root.escapable = false
+      escapeTimer.stop()
       if (root.active || root.background) root.refresh()
     }
   }

@@ -42,11 +42,11 @@ var SHORTCUTS = [
   { group: "VM", keys: "r", text: "Restart it (permanent)" },
   { group: "VM", keys: "l", text: "Follow its journal in a terminal (permanent)" },
   { group: "VM", keys: "m", text: "Edit it: the template, or every field of a permanent VM" },
-  { group: "VM", keys: "x", text: "Delete it (a permanent VM's state directory is kept)" },
+  { group: "VM", keys: "x", text: "Delete it (running disposable stopped first; permanent state kept)" },
   { group: "VM", keys: "y", text: "Copy its name" },
 
-  { group: "All VMs", keys: "c", text: "Create a new VM" },
-  { group: "All VMs", keys: "i", text: "Describe a VM to the default agent, which fills the form" },
+  { group: "All VMs", keys: "c", text: "Create a new VM (opens at the name)" },
+  { group: "All VMs", keys: "i", text: "Describe a VM to the default agent (opens at the description)" },
   { group: "All VMs", keys: "a", text: "Apply queued changes: nixarchy-apply in a terminal" },
 
   { group: "Panel", keys: "o", text: "Show the build log" },
@@ -205,10 +205,19 @@ function optPath(name) {
 // ---------------------------------------------------------------- parsing
 
 
-// `[` first means the JSON the upstream PR adds; anything else is today's
-// text. The caller learns which it got from `isJsonList`.
+// The list commands return JSON arrays. A different first byte means an old
+// nixarchy answered without --json support.
 function isJsonList(raw) {
   return trim(raw).charAt(0) === "["
+}
+
+function isTooOldList(raw) {
+  if (!trim(raw)) return false
+  try {
+    return !Array.isArray(JSON.parse(String(raw)))
+  } catch (e) {
+    return true
+  }
 }
 
 function parseJsonArray(raw) {
@@ -220,61 +229,33 @@ function parseJsonArray(raw) {
   }
 }
 
-// `nixarchy vm list`: with --json, [{name, template, running, dir}]; without,
-//   VMs:
-//     alice            template=shell      stopped
-// or "No VMs yet. …". Either way: [{name, template, running, dir}].
+// `nixarchy vm list --json`: [{name, template, running, dir}].
 function parseVmList(raw) {
   var out = []
-  if (isJsonList(raw)) {
-    var list = parseJsonArray(raw)
-    for (var j = 0; j < list.length; j++) {
-      var item = list[j] || {}
-      if (!isReportedName(item.name)) continue
-      out.push({
-        name: String(item.name),
-        template: isTemplateName(item.template) ? String(item.template) : "?",
-        running: item.running === true,
-        dir: sanitize(item.dir, 4096)
-      })
-    }
-    return out
-  }
-  var lines = String(raw || "").split("\n")
-  for (var i = 0; i < lines.length; i++) {
-    var m = lines[i].match(/^\s*(\S+)\s+template=(\S+)\s+(running|stopped)\s*$/)
-    if (!m || !isReportedName(m[1])) continue
-    out.push({ name: m[1], template: isTemplateName(m[2]) ? m[2] : "?", running: m[3] === "running", dir: "" })
+  if (!isJsonList(raw)) return out
+  var list = parseJsonArray(raw)
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i] || {}
+    if (!isReportedName(item.name)) continue
+    out.push({
+      name: String(item.name),
+      template: isTemplateName(item.template) ? String(item.template) : "?",
+      running: item.running === true,
+      dir: sanitize(item.dir, 4096)
+    })
   }
   return out
 }
 
-// `nixarchy vm templates`: with --json, [{name, label, note}]; without,
-//   Templates:
-//     shell      Shell
-//                  A bare NixOS shell …
-// The note line is the one indented past the name column.
+// `nixarchy vm templates --json`: [{name, label, note}].
 function parseTemplates(raw) {
   var out = []
-  if (isJsonList(raw)) {
-    var list = parseJsonArray(raw)
-    for (var j = 0; j < list.length; j++) {
-      var item = list[j] || {}
-      if (!isTemplateName(item.name)) continue
-      out.push({ name: String(item.name), label: sanitize(item.label, 40) || String(item.name), note: sanitize(item.note, 400) })
-    }
-    return out
-  }
-  var lines = String(raw || "").split("\n")
-  for (var i = 0; i < lines.length; i++) {
-    var note = lines[i].match(/^\s{12,}(\S.*)$/)
-    if (note && out.length > 0) {
-      out[out.length - 1].note = join([out[out.length - 1].note, sanitize(note[1], 400)], " ")
-      continue
-    }
-    var m = lines[i].match(/^\s{1,4}(\S+)\s+(\S.*)$/)
-    if (!m || !isTemplateName(m[1])) continue
-    out.push({ name: m[1], label: sanitize(m[2], 40), note: "" })
+  if (!isJsonList(raw)) return out
+  var list = parseJsonArray(raw)
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i] || {}
+    if (!isTemplateName(item.name)) continue
+    out.push({ name: String(item.name), label: sanitize(item.label, 40) || String(item.name), note: sanitize(item.note, 400) })
   }
   return out
 }
@@ -559,6 +540,19 @@ function cardWidth(available, fraction, min, max) {
   return Math.max(lo, Math.min(hi, Math.round(available * fraction)))
 }
 
+// The menu card's size and top offset on a screen, in pixels; a floor size
+// while no screen is known (#50).
+function menuGeometry(screenW, screenH, minW, maxW, viewNaturalH, insetX, insetY, gaps) {
+  if (screenW > 0 && screenH > 0) {
+    var viewW = cardWidth(screenW, 0.55, minW, maxW)
+    var width = Math.round(Math.min(viewW + insetX, Math.round(screenW * 0.9)))
+    var height = Math.round(Math.min(viewNaturalH + insetY, Math.round(screenH * 0.85)))
+    return { width: width, height: height, top: Math.round(Math.max(gaps, Math.round((screenH - height) / 3))) }
+  }
+  return { width: Math.round(Math.min(minW, maxW) + insetX),
+    height: Math.round(viewNaturalH + insetY), top: Math.round(gaps) }
+}
+
 // What is left for the scrolling part once the fixed chrome has its share.
 function bodyBudget(total, chrome) {
   if (!(total > 0)) return 0
@@ -682,9 +676,10 @@ function listFailure(stderr, code) {
   return errorText(stderr) || "exit " + code
 }
 
-function summaryText(rows, reachable, listError) {
-  if (listError) return "VM list failed: " + listError
+function summaryText(rows, reachable, listError, upstreamError) {
   if (!reachable) return "nixarchy-vm not found"
+  if (upstreamError) return upstreamError
+  if (listError) return "VM list failed: " + listError
   var c = counts(rows)
   if (c.total === 0) return "No VMs"
   return c.running + " of " + c.total + " running"
@@ -700,6 +695,7 @@ function emptyText(state) {
   if (!state.everLoaded) return "Loading…"
   if (!state.reachable) return "nixarchy-vm is not on PATH"
   if (state.filtered) return "Nothing matches that filter"
+  if (state.upstreamError) return state.upstreamError
   if (state.listError) return "VM list failed: " + state.listError
   if (!state.showStopped) return "No running VMs"
   return "No VMs yet — press c to create one"
@@ -932,8 +928,10 @@ function emptyForm(kind) {
     name: "",
     template: "shell",
     autostart: true,
+    startNow: true,
     memory: "1024",
     cores: "1",
+    advanced: false,
     sshPort: "",
     sshKey: "",
     shares: ""
@@ -953,6 +951,7 @@ function formFromRow(row) {
     f.sshPort = String(row.sshPort || "")
     f.sshKey = String(row.sshKey || "")
     f.shares = String(row.shares || "")
+    f.advanced = !!(f.sshPort || f.sshKey || f.shares)
   }
   return f
 }
@@ -1144,12 +1143,14 @@ var FORM_FIELDS = [
   { key: "kind", widget: "kind", label: "Kind", hint: "space flips. Disposable: no root, no rebuild. Permanent: boots with the host, one line in apps.nix", create: true },
   { key: "name", widget: "text", label: "Name", hint: "Required", create: true },
   { key: "template", widget: "template", label: "Template", hint: "↓ picks from the list" },
+  { key: "startNow", widget: "bool", label: "Start it now", disposable: true, create: true },
   { key: "autostart", widget: "bool", label: "Start at boot", permanent: true },
   { key: "memory", widget: "text", label: "Memory (MiB)", hint: "256 to 131072", permanent: true },
   { key: "cores", widget: "text", label: "Cores", hint: "1 to 64", permanent: true },
-  { key: "sshPort", widget: "text", label: "SSH port on the host", hint: "Empty means console only. 1024 to 65535", permanent: true },
-  { key: "sshKey", widget: "key", label: "SSH public key", hint: "↓ picks one from ~/.ssh; needed to log in over the port", permanent: true },
-  { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true }
+  { key: "advanced", widget: "bool", label: "SSH and shares", permanent: true },
+  { key: "sshPort", widget: "text", label: "SSH port on the host", hint: "Empty means console only. 1024 to 65535", permanent: true, advanced: true },
+  { key: "sshKey", widget: "key", label: "SSH public key", hint: "↓ picks one from ~/.ssh; needed to log in over the port", permanent: true, advanced: true },
+  { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true, advanced: true }
 ]
 
 // `state` is {agent, aiAssist}: the describe field exists only when the
@@ -1161,10 +1162,25 @@ function visibleFields(form, state) {
     var field = FORM_FIELDS[i]
     if (field.create && f.editing === true) continue
     if (field.permanent && f.kind !== "permanent") continue
+    if (field.disposable && f.kind === "permanent") continue
+    if (field.advanced && f.advanced !== true) continue
     if (field.agent && !(state && state.agent && state.aiAssist !== false)) continue
     out.push(field)
   }
   return out
+}
+
+// The name of the disposable VM to start once its create succeeds, or "".
+function startAfterCreate(form) {
+  var f = form || {}
+  if (f.kind !== "disposable" || f.editing === true || f.startNow === false) return ""
+  return trim(f.name)
+}
+
+// Where the cursor starts: the index of `key`, or the first field.
+function fieldIndexOf(fields, key) {
+  for (var i = 0; i < (fields || []).length; i++) if (fields[i].key === key) return i
+  return 0
 }
 
 // Where the cursor lands to show the first error: in field order.
@@ -1211,18 +1227,15 @@ function templatesMatching(templates, query) {
 
 // ---------------------------------------------------------------- features
 //
-// Nothing about the tools is assumed. `nixarchy vm help` says which of the
-// upstream subcommands exist (nixarchy#762), and nixarchy-pkg answers
-// `opt replace` with a usage line once it has it (nixarchy-pkg#19). JSON
-// listing is detected from the output itself (isJsonList).
-
-function detectFeatures(helpText) {
+// The required nixarchy commands are named in help; nixarchy-pkg answers
+// `opt replace` with a usage line. JSON listing is checked separately.
+function upstreamVerdict(helpText, optReply, pkgPresent) {
   var text = String(helpText || "")
-  return {
-    vmDetach: /\brun\b[^\n]*--detach/.test(text),
-    vmConsole: /\bvm console\b/.test(text),
-    vmSetTemplate: /\bset-template\b/.test(text)
-  }
+  if (!/\brun\b[^\n]*--detach/.test(text) || !/\bvm console\b/.test(text) || !/\bset-template\b/.test(text))
+    return "This plugin needs nixarchy with nixarchy vm run --detach, console and set-template (nixarchy#762); update nixarchy"
+  if (pkgPresent && !optReplaceSupported(optReply))
+    return "This plugin needs nixarchy-pkg opt replace (nixarchy-pkg#19); update nixarchy.pkg"
+  return ""
 }
 
 // Today: {"ok":false,"error":"opt takes describe, set or remove, not
@@ -1285,15 +1298,9 @@ function tui(appId, argv) {
   return ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-" + appId].concat(argv)
 }
 
-// A running disposable VM's console, in a terminal (needs vmConsole).
+// A running disposable VM's console, in a terminal.
 function consoleArgv(name) {
   return isReportedName(name) ? tui("console", ["nixarchy-vm", "console", name]) : null
-}
-
-// "Start in terminal": today's `run`, which builds and boots in that
-// terminal and holds the VM for as long as the terminal does.
-function runTerminalArgv(name) {
-  return isReportedName(name) ? tui("run", ["nixarchy-vm", "run", name]) : null
 }
 
 function runDetachArgv(name) {
@@ -1367,17 +1374,18 @@ function copyArgv(name) {
 
 // The queued commands for a submitted form: one for a disposable VM, two for
 // a new permanent one (the service row, then its line), one for an edit.
-// Null when the form is invalid or the feature it needs is missing.
+// Null when the form is invalid or the required upstream is unavailable.
 function submitArgvs(form, rows, templates, hostHome, state) {
   var f = form || {}
   var s = state || {}
+  if (!s.upstreamOk) return null
   if (f.kind === "permanent") {
     if (permanentBlocked(f, s)) return null
     var snippet = machineSnippet(f, rows, templates, hostHome)
     if (!snippet || !s.pkgScript) return null
     if (f.editing === true) {
       var replace = optReplaceArgv(s.pkgScript, trim(f.name), snippet)
-      return s.optReplace && replace ? [replace] : null
+      return replace ? [replace] : null
     }
     var set = optSetArgv(s.pkgScript, trim(f.name), snippet)
     return set ? [serviceEnableArgv(), set] : null
@@ -1385,7 +1393,7 @@ function submitArgvs(form, rows, templates, hostHome, state) {
   if (!validateForm(f, rows, templates, hostHome).ok) return null
   if (f.editing === true) {
     var setT = setTemplateArgv(trim(f.name), trim(f.template), templates)
-    return s.vmSetTemplate && setT ? [setT] : null
+    return setT ? [setT] : null
   }
   var create = createVmArgv(trim(f.name), trim(f.template), templates)
   return create ? [create] : null
@@ -1398,22 +1406,21 @@ function action(verb, key, glyph, tooltip, danger, enabled) {
 }
 
 // The one place a key's applicability is decided. `state` is
-// {mutating, vmDetach, vmConsole, vmSetTemplate, pkgScript, optReplace}.
+// {mutating, upstreamOk, pkgScript, pendingSync}.
 // A verb that does not apply to the row is absent; one that only waits
 // for the lock is present and disabled. Console, logs and copy never lock.
 function actionsFor(row, state) {
   if (!row) return []
   var s = state || {}
+  if (!s.upstreamOk) return [action("copy", "y", Glyph.copy, "Copy the name  (y)", false, true)]
   var free = !s.mutating
   var out = []
   var running = row.runtime === "running"
   if (row.kind === "disposable") {
-    if (running && s.vmConsole) out.push(action("console", "enter", Glyph.console, "Open the console  (enter)", false, true))
-    if (!running && !s.vmConsole) out.push(action("startTerminal", "enter", Glyph.console, "Start in a terminal  (enter)", false, free))
+    if (running) out.push(action("console", "enter", Glyph.console, "Open the console  (enter)", false, true))
     if (running) out.push(action("stop", "s", Glyph.stop, "Stop  (s)", true, free))
-    else if (s.vmDetach) out.push(action("start", "s", Glyph.play, "Start, with the build log here  (s)", false, free))
-    else out.push(action("startTerminal", "s", Glyph.play, "Start in a terminal  (s)", false, free))
-    if (!running && s.vmSetTemplate) out.push(action("edit", "m", Glyph.edit, "Change the template  (m)", false, free))
+    else out.push(action("start", "s", Glyph.play, "Start, with the build log here  (s)", false, free))
+    if (!running) out.push(action("edit", "m", Glyph.edit, "Change the template  (m)", false, free))
     out.push(action("remove", "x", Glyph.remove, "Delete, with its state  (x)", true, free))
   } else {
     var managed = row.ownership === "managed"
@@ -1427,15 +1434,14 @@ function actionsFor(row, state) {
       }
       out.push(action("logs", "l", Glyph.logs, "Follow the journal  (l)", false, true))
     }
-    if (managed && s.pkgScript && s.optReplace) out.push(action("edit", "m", Glyph.edit, "Edit its line  (m)", false, free))
+    if (managed && s.pkgScript) out.push(action("edit", "m", Glyph.edit, "Edit its line  (m)", false, free))
     if (managed) out.push(action("remove", "x", Glyph.remove, "Remove its line from apps.nix  (x)", true, free))
   }
   out.push(action("copy", "y", Glyph.copy, "Copy the name  (y)", false, true))
   return out
 }
 
-// The row's buttons: one per verb. Enter and s can share a verb (start in
-// terminal), which is one button.
+// The row's buttons: one per verb.
 function buttonsFor(row, state) {
   var list = actionsFor(row, state)
   var seen = {}
@@ -1471,23 +1477,22 @@ function listActions(state, c) {
   var s = state || {}
   var counts = c || {}
   return {
-    create: true,
+    create: !!s.upstreamOk,
     // schemaLoaded false means schema.json could not be read, so the reply
     // could never be validated: offering i would be offering a dead key.
-    assist: !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
-    apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
+    assist: !!s.upstreamOk && !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
+    apply: !!s.upstreamOk && !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
   }
 }
 
 // Why a key is not there, for the hint under the list.
 function hiddenReason(row, state, verb) {
   var s = state || {}
+  if (!s.upstreamOk) return s.upstreamError || "checking nixarchy…"
   if (!row) return ""
   if (row.kind === "permanent" && row.ownership === "removed") return "removed, pending apply"
   if (row.kind === "disposable") {
-    if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
     if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
-    if (verb === "edit" && !s.vmSetTemplate) return "changing the template needs nixarchy vm set-template (nixarchy#762)"
     return ""
   }
   if (verb === "console") {
@@ -1500,7 +1505,6 @@ function hiddenReason(row, state, verb) {
     if (row.ownership === "flake") return "declared in your flake; edit it there"
     if (row.ownership === "managed-unsupported") return "this line was edited by hand; edit it in apps.nix"
     if (verb === "edit" && !s.pkgScript) return "permanent VMs need the nixarchy.pkg plugin"
-    if (verb === "edit" && !s.optReplace) return "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)"
   }
   return ""
 }
@@ -1511,10 +1515,63 @@ function pendingName(pendingKey) {
   return colon === -1 ? "" : key.substring(colon + 1)
 }
 
+// The next command is chosen here; QML only carries it out after the process exits.
+function continueAfter(next, event) {
+  if (!event || (event.type !== "exit" && event.type !== "tick")) return { do: "fail", message: "invalid continuation event", next: null }
+  if (event.type === "exit") {
+    if (next && next.kind === "wait" && next.resending) {
+      var waiting = Object.assign({}, next)
+      waiting.resending = false
+      return { do: "wait", next: waiting }
+    }
+    if (!event.ok) return { do: "fail", message: "command failed", next: null }
+    if (!next || next.kind === "last") return { do: "done", next: null }
+    if (next.kind === "stream" || next.kind === "rm") return { do: next.kind, name: next.name, next: { kind: "last", name: next.name } }
+    if (next.kind === "wait") return { do: "wait", next: next }
+  } else if (next && next.kind === "wait") {
+    var step = removeWaitStep(next, event.listOk, event.listGen, event.stopped, event.now)
+    if (step === "rm") return { do: "rm", name: next.name, next: { kind: "last", name: next.name } }
+    if (step === "resend") return { do: "stop", name: next.name, next: Object.assign({}, next, { resent: true, resending: true }) }
+    if (step === "timeout") return { do: "fail", message: next.name + " did not stop within 90 s; nothing was deleted", next: null }
+    return { do: "wait", next: next }
+  }
+  return { do: "fail", message: "invalid continuation step", next: null }
+}
+
+// What X says when it abandons a chained action. Only before rm starts is it
+// certain that nothing was deleted (#49).
+function abandonMessage(next, pendingVerb) {
+  var n = next || {}
+  if (n.kind === "wait") return "gave up waiting for " + n.name + "; nothing was deleted"
+  if (n.kind === "last" && pendingVerb === "deleting") return "gave up deleting " + n.name + "; it may be partly deleted"
+  return "giving up on " + (pendingVerb || "it") + " — asking it to stop"
+}
+
+// Whether a list says the VM is down: absent counts as stopped (#49).
+function isStopped(vms, name) {
+  var list = vms || []
+  for (var i = 0; i < list.length; i++)
+    if (list[i] && list[i].name === name && list[i].running === true) return false
+  return true
+}
+
+function removeWaitStep(wait, listOk, listGen, stopped, now) {
+  if (now - wait.since >= 90000) return "timeout"
+  if (listOk && listGen > wait.afterGen && stopped) return "rm"
+  if (now - wait.since >= 30000 && !wait.resent) return "resend"
+  return "wait"
+}
+
+// Ask "Apply now?" only after a permanent machine was written.
+function offerApply(verb, key, failed) {
+  return !failed && (verb === "creating" || verb === "editing") && String(key || "").indexOf("permanent:") === 0
+}
+
 function removeMessage(row, stateDir) {
   if (!row) return ""
   if (row.kind === "disposable") {
     var dir = trim(stateDir).replace(/\/+$/, "") + "/" + row.name
+    if (row.runtime === "running") return "Stop and delete " + row.name + ", and everything in " + dir + "?"
     return "Delete " + row.name + " and everything in " + dir + "? Stop it first if it is running."
   }
   return "Remove " + row.name + " from ~/.config/nixarchy/apps.nix? The unit and /var/lib/microvms/" + row.name +
@@ -1561,7 +1618,7 @@ function agentPrompt(text, templates) {
     "You fill in a form that creates a NixOS MicroVM on this desktop. Answer with one JSON object matching the schema you were given, and nothing else.",
     "",
     "Two kinds of VM:",
-    "- disposable: created and destroyed freely, no root, no rebuild, runs only while attached. Choose this unless the request asks for something below.",
+    "- disposable: created and destroyed freely, no root, no rebuild. Choose this unless the request asks for something below.",
     "- permanent: boots with the host under systemd, can forward an SSH port, has fixed memory and cores. Choose this when the request mentions boot, autostart, SSH, a port, or keeping the machine.",
     "",
     "Templates (use the name, not the label):"
@@ -1678,7 +1735,7 @@ function applyAgentReply(reply, form) {
       f[key] = String(v)
     } else if (type === "port") {
       if (v === null) f.sshPort = ""
-      else if (typeof v === "number" && v === Math.floor(v)) f.sshPort = String(v)
+      else if (typeof v === "number" && v === Math.floor(v)) { f.sshPort = String(v); f.advanced = true }
       else rejected.push(key)
     } else if (type === "boolean") {
       if (typeof v !== "boolean") { rejected.push(key); continue }
@@ -1693,7 +1750,7 @@ function applyAgentReply(reply, form) {
         pairs.push(sanitize(s.source, 4096) + ":" + sanitize(s.mountPoint, 4096))
       }
       if (bad) rejected.push(key)
-      else f.shares = pairs.join(" ")
+      else { f.shares = pairs.join(" "); if (pairs.length > 0) f.advanced = true }
     }
   }
   return { form: f, reasoning: reasoning, rejected: rejected }

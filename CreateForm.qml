@@ -84,10 +84,12 @@ FocusScope {
   implicitHeight: formChrome + fieldsColumn.implicitHeight
 
   // Called every time the form opens: a clean form, cursor on the first field.
-  function start(kind) {
+  function start(kind, field) {
     root.setForm(Model.emptyForm(kind))
     root.reasoning = ""
     root.begin()
+    // After begin(), which resets the cursor to 0.
+    root.fieldIndex = Model.fieldIndexOf(root.fields, field)
   }
 
   function startEdit(row) {
@@ -160,6 +162,8 @@ FocusScope {
   function submit() {
     root.attempted = true
     if (!root.check.ok) {
+      var e = root.check.errors
+      if (!root.form.advanced && (e.sshPort || e.sshKey || e.shares)) root.setValue("advanced", true)
       var at = Model.firstErrorIndex(root.fields, root.check.errors)
       if (at !== -1) root.fieldIndex = at
       Qt.callLater(root.focusCurrent)

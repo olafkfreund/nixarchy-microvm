@@ -8,7 +8,7 @@ import "Model.js" as Model
 
 // The bar widget: a glyph that keeps an eye on your VMs, and a keyboard popup
 // under it. The data lives in the MicrovmState singleton, shared with the
-// full-screen menu (Menu.qml).
+// menu (Menu.qml).
 Panel {
   id: root
 
@@ -68,7 +68,7 @@ Panel {
     function refresh(): void { MicrovmState.refresh() }
     function create(): void {
       root.open()
-      view.openForm("disposable")
+      view.openForm("disposable", "name")
     }
     function status(): string { return MicrovmState.statusJson() }
   }
@@ -88,7 +88,7 @@ Panel {
     active: MicrovmState.counts.running > 0 || MicrovmState.mutating
     useActiveColor: true
     activeColor: MicrovmState.counts.failing > 0 ? Commons.Color.urgent : Commons.Color.accent
-    tooltipText: "MicroVMs · " + Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError)
+    tooltipText: "MicroVMs · " + Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError, MicrovmState.upstreamError)
 
     onPressed: function(b) {
       if (b === Qt.MiddleButton) MicrovmState.refresh()
@@ -117,6 +117,7 @@ Panel {
       id: view
       anchors.fill: parent
       surface: "bar"
+      opened: root.opened
       foreground: root.foreground
       fontFamily: root.fontFamily
       onCloseRequested: root.close()

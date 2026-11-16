@@ -41,7 +41,7 @@ test("permanentRows keeps only confirmed removals without an apps.nix line", () 
   eq(by.p3.ownership, "flake")
   eq(by.p1.ownership, "managed") // the line still exists
   ok(!by.p6)
-  eq(Model.listActions({ pkgScript: "/pkg" }, Model.counts([by.p5])).apply, true)
+  eq(Model.listActions({ upstreamOk: true, pkgScript: "/pkg" }, Model.counts([by.p5])).apply, true)
 })
 
 test("removed ownership takes precedence in status, reasons, and subtitles", () => {
@@ -49,7 +49,7 @@ test("removed ownership takes precedence in status, reasons, and subtitles", () 
   eq(Model.statusText(removed), "removed, pending apply")
   eq(Model.rowsFor([removed])[0].subtitle, "permanent")
   for (const verb of ["console", "start", "stop", "restart", "edit", "remove", "logs", "copy"])
-    eq(Model.hiddenReason(removed, {}, verb), "removed, pending apply")
+    eq(Model.hiddenReason(removed, { upstreamOk: true }, verb), "removed, pending apply")
   for (const [ownership, label, reason] of [
     ["flake", "declared in your flake", "declared in your flake; edit it there"],
     ["managed-unsupported", "apps.nix, edited by hand", "this line was edited by hand; edit it in apps.nix"],
@@ -59,7 +59,7 @@ test("removed ownership takes precedence in status, reasons, and subtitles", () 
     const row = Object.assign({}, removed, { ownership, pending: ownership === "removed", runtime: "stopped" })
     eq(Model.ownershipText(row), label)
     eq(Model.statusText(row), ownership === "removed" ? "removed, pending apply" : "stopped")
-    eq(Model.hiddenReason(row, { pkgScript: "/pkg", optReplace: true }, "edit"), reason)
+    eq(Model.hiddenReason(row, { upstreamOk: true, pkgScript: "/pkg" }, "edit"), reason)
   }
 })
 
@@ -210,12 +210,11 @@ test("stepCursor: the first ↓ lands on the first row (#5)", () => {
   eq(S(true, 1, 0, 3), { active: true, index: 1, toFilter: false })
 })
 
-test("hiddenReason: the m hint names set-template only when it is missing (#4)", () => {
+test("hiddenReason: a running disposable VM must stop before template edit", () => {
   const stopped = { kind: "disposable", name: "demo", runtime: "stopped" }
   const running = { kind: "disposable", name: "demo", runtime: "running" }
-  eq(Model.hiddenReason(stopped, { vmSetTemplate: true }, "edit"), "")
-  eq(Model.hiddenReason(stopped, { vmSetTemplate: false }, "edit"), "changing the template needs nixarchy vm set-template (nixarchy#762)")
-  eq(Model.hiddenReason(running, { vmSetTemplate: true }, "edit"), "stop it first to change the template")
+  eq(Model.hiddenReason(stopped, { upstreamOk: true }, "edit"), "")
+  eq(Model.hiddenReason(running, { upstreamOk: true }, "edit"), "stop it first to change the template")
 })
 
 test("cardWidth holds a fraction of the host's offer between two bounds (#24)", () => {
@@ -233,6 +232,35 @@ test("cardWidth holds a fraction of the host's offer between two bounds (#24)", 
   eq(Model.cardWidth(0, 0.3, 620, 380), 380)
 })
 
+test("menuGeometry sizes and places the menu on a normal screen (#50)", () => {
+  eq(Model.menuGeometry(2560, 1440, 560, 1500, 700, 32, 24, 16),
+    { width: 1440, height: 724, top: 239 })
+})
+
+test("menuGeometry caps both dimensions on a small screen (#50)", () => {
+  eq(Model.menuGeometry(800, 500, 560, 1100, 700, 200, 24, 16),
+    { width: 720, height: 425, top: 25 })
+})
+
+test("menuGeometry keeps a nonzero natural size before the screen is known (#50)", () => {
+  eq(Model.menuGeometry(0, 0, 560, 1100, 700, 32, 24, 16),
+    { width: 592, height: 724, top: 16 })
+})
+
+test("menuGeometry: the gap floor, one unknown axis, fractions and a swapped floor (#50 review)", () => {
+  // A card taller than the screen allows still keeps the gap above it.
+  eq(Model.menuGeometry(2560, 100, 560, 1100, 900, 32, 24, 16).top, 16)
+  // One axis unknown is no screen.
+  eq(Model.menuGeometry(2560, 0, 560, 1100, 700, 32, 24, 16), { width: 592, height: 724, top: 16 })
+  eq(Model.menuGeometry(0, 1440, 560, 1100, 700, 32, 24, 16), { width: 592, height: 724, top: 16 })
+  // Style.space() returns fractions; the result is whole pixels.
+  const g = Model.menuGeometry(1920, 1080, 560.4, 1100.6, 300.3, 10.5, 10.5, 12.3)
+  ok(Number.isInteger(g.width) && Number.isInteger(g.height) && Number.isInteger(g.top))
+  // The real 1100 ceiling, and a floor above the ceiling.
+  eq(Model.menuGeometry(2560, 1440, 560, 1100, 700, 32, 24, 16).width, 1132)
+  eq(Model.menuGeometry(2560, 1440, 1100, 560, 700, 32, 24, 16).width, 1132)
+})
+
 test("bodyBudget is what the chrome leaves (#24)", () => {
   eq(Model.bodyBudget(1000, 200), 800)
   eq(Model.bodyBudget(0, 200), 0)
@@ -244,14 +272,14 @@ test("bodyBudget is what the chrome leaves (#24)", () => {
 })
 
 test("listActions hides assist when the schema could not be read (#23)", () => {
-  const base = { agent: "claude", aiAssist: true }
+  const base = { upstreamOk: true, agent: "claude", aiAssist: true }
   ok(Model.listActions(Object.assign({ schemaLoaded: true }, base), {}).assist)
   // schema.json unreadable: the reply could never be validated, so offering i
   // would be offering a dead key.
   ok(!Model.listActions(Object.assign({ schemaLoaded: false }, base), {}).assist)
   // Absent (an older state object) must not hide it.
   ok(Model.listActions(base, {}).assist)
-  ok(!Model.listActions({ agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
+  ok(!Model.listActions({ upstreamOk: true, agent: "", aiAssist: true, schemaLoaded: true }, {}).assist)
 })
 
 test("a name the writers cannot emit is listed, not editable (#38)", () => {

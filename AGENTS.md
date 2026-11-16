@@ -12,7 +12,7 @@ Quickshell QML. It manages the two kinds of NixOS MicroVM that
 surfaces:
 
 - **a bar widget**, whose popup sits under the glyph (`Panel.qml`);
-- **a full-screen keyboard menu** (`Menu.qml`).
+- **a keyboard menu** (`Menu.qml`).
 
 The two kinds:
 
@@ -38,16 +38,16 @@ form, never for an action.
 | `Model.js` | All logic: parsing CLI, systemd and apps.nix output, rows, validation, the snippet grammar, the agent prompt and reply, and every command's argv. Pure `.pragma library` with no QML, tested under Node. |
 | `schema.json` | The JSON Schema handed to the agent. One copy, read at runtime and by the tests. |
 | `qmldir` | Declares `MicrovmState` a singleton, so the bar and the menu share one instance. |
-| `MicrovmState.qml` | Data, polling, feature detection, the operation lock, the stream log, the agent call, and every `Process`. |
+| `MicrovmState.qml` | Data, polling, the upstream verdict, the operation lock, the stream log, the agent call, and every `Process`. |
 | `MicrovmView.qml` | Interaction: modes (list / form / review / log), cursor, filter, confirmations, keys. Shared by both surfaces. |
 | `VmList.qml`, `CreateForm.qml`, `LogView.qml`, `ShortcutSheet.qml` | Drawing pieces used by the view. |
 | `Panel.qml` | The bar widget host: glyph, `KeyboardPanel` popup, and IPC target `nixarchy.microvm.bar`. |
-| `Menu.qml` | The full-screen menu host (manifest kind `menu`). It sizes its card from the focused screen and hosts the view unscaled. |
+| `Menu.qml` | The menu host (manifest kind `menu`). A full-screen, undimmed layer that only catches a click outside the card; the card is sized and placed from the focused screen (`Model.menuGeometry`). |
 | `manifest.json` | Plugin id `nixarchy.microvm`, kinds `menu` + `bar-widget`, `keepLoaded: true`, settings schema. |
 | `flake.nix` | The package (an explicit `files` list, copied as real files) and `checks.<system>.default`. |
 | `share/omarchy-menu.jsonc` | The Omarchy menu row users paste in. |
 | `tests/` | Node tests for `Model.js` (`tests/run.js`). |
-| `docs/` | The user guide and the GitHub Pages site. `docs/upstream.md` tracks the two upstream issues. |
+| `docs/` | The user guide and the GitHub Pages site. `docs/upstream.md` tracks the upstream requirements and #843. |
 | `intent/`, `spec/`, `plan/` | Design artifacts for each task. See Workflow. |
 
 ## Commands
@@ -97,7 +97,7 @@ d=$(mktemp -d) && git clone -q . "$d/p" && rm -rf "$d/p/.git" && omarchy plugin 
      `'{"create":true}'` to open straight into the form;
    - the popup: `omarchy shell nixarchy.microvm.bar open`.
 5. **Confirm what is up** with `hyprctl layers -j`. The menu's namespace is
-   `nixarchy-microvm-menu`.
+   `nixarchy-microvm-menu` (full-screen, but drawn only where the card is).
 6. **Test VMs:** disposable ones named `t1`, `t2` and so on, removed with
    `nixarchy vm rm` when done. A permanent test machine is one `p1` line in
    `apps.nix`, removed with `nixarchy-opt-remove
@@ -225,16 +225,18 @@ is the check that keeps this paragraph honest.
   `Model.parseMachineSnippet` must keep reading everything `Model.machineSnippet`
   writes (`parse(emit(f)) == f` is a test). A line a user changed by hand outside the
   grammar is shown read-only, never rewritten.
-- **Every `nixarchy vm` feature is detected, not assumed.** `list --json` by the
-  output's first byte, `run --detach`, `console` and `set-template` by
-  `nixarchy-vm help`. A key that needs a missing feature is absent, not broken.
+- **One supported upstream, one verdict.** `nixarchy vm` must have `list --json`,
+  `templates --json`, `run --detach`, `console` and `set-template` (nixarchy#762),
+  and nixarchy.pkg, when installed, must have `opt replace` (nixarchy-pkg#19).
+  Every action is absent until the probes finish (`"checking nixarchy…"`), and on an
+  older host `Model.upstreamVerdict` returns one message naming what to update.
+  `nixarchy-service-enable --help` (nixarchy#843) is still detected at runtime.
 - **Disposable state is never touched except through `nixarchy-vm`.** No file
   under the state directory is written by this plugin.
 - **One mutation at a time, via the singleton.** Start, stop, restart, create, edit
-  and delete are refused while another mutation runs, from either surface. Listing,
-  console, logs, copy, apply and the agent call never lock. On nixarchy without
-  `run --detach` (nixarchy#762), a start opens a terminal that is not tracked, so it
-  does not hold the lock.
+  and delete are refused while another mutation runs, from either surface, and
+  multi-step actions (create-and-start, stop-and-delete) hold the lock throughout.
+  Listing, console, logs, copy, apply and the agent call never lock.
 - **One `singleton MicrovmState` line in `qmldir`.** *(checked: singleton)*
   Without it the bar and the menu each get their own state, and "one mutation at
   a time" silently stops holding.
@@ -244,7 +246,7 @@ is the check that keeps this paragraph honest.
   whatever belongs to the *final* mode, via `Qt.callLater`. It never touches the
   stream or the log.
 - **Nothing polls while every surface is closed.** The bar's slow poll for the
-  glyph is the only exception.
+  glyph and a stop-and-delete in progress (at most 90 s) are the only exceptions.
 - **Logic goes in `Model.js`, with a Node test.** Keep QML to drawing and wiring.
 - **A user-visible change updates `docs/usage.md` and the README in the same PR.**
   *(by hand)* The README holds the key tables; `docs/usage.md` points at them
@@ -280,6 +282,5 @@ issue number.
 
 - codex as an assist agent, once a no-tools mode is verified by behaviour.
 - Disposable rename, per-VM memory and cores, and `r` for disposable VMs.
-- The upstream issues in `docs/upstream.md`: every key they unlock is already
-  wired and hidden until the feature is detected.
+- nixarchy#843 in `docs/upstream.md`: detected at runtime until it ships.
 - Wire p620 to this flake.
