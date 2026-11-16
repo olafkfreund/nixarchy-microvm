@@ -211,8 +211,7 @@ Item {
 
         Text {
           width: parent.width
-          text: rowSurface.row.template + (rowSurface.row.ownership === "flake" ? " · declared in your flake"
-            : rowSurface.row.ownership === "managed-unsupported" ? " · apps.nix, edited by hand" : "")
+          text: Model.join([rowSurface.row.template, Model.ownershipText(rowSurface.row)], " · ")
           textFormat: Text.PlainText
           visible: text !== ""
           color: root.dim

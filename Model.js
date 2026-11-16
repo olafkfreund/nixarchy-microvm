@@ -396,10 +396,12 @@ function disposableRows(vms) {
 // declared somewhere this plugin cannot edit (ownership "flake").
 function permanentRows(units, machines, pending) {
   var byName = Object.create(null)
+  var fromLine = Object.create(null)
   var order = []
   var list = machines || []
   for (var m = 0; m < list.length; m++) {
     var row = baseRow("permanent", list[m].name)
+    fromLine[row.name] = true
     row.ownership = list[m].ownership
     row.line = list[m].line
     var f = list[m].fields
@@ -425,6 +427,16 @@ function permanentRows(units, machines, pending) {
     byName[name].runtime = us[u].active === "active" ? "running" : us[u].active === "failed" ? "failed" : "stopped"
   }
   var p = pending && pending.machines ? pending.machines : {}
+  var names = Object.keys(p)
+  for (var n = 0; n < names.length; n++) {
+    var removed = names[n]
+    if (p[removed] !== "removed" || fromLine[removed]) continue
+    if (!byName[removed]) {
+      byName[removed] = baseRow("permanent", removed)
+      order.push(removed)
+    }
+    byName[removed].ownership = "removed"
+  }
   var out = []
   for (var i = 0; i < order.length; i++) {
     byName[order[i]].pending = p[order[i]] !== undefined
@@ -476,6 +488,7 @@ function filterRows(rows, query) {
 
 function statusText(row) {
   if (!row) return ""
+  if (row.ownership === "removed") return "removed, pending apply"
   if (row.pending) return row.runtime === "none" ? "pending apply" : "changed, pending apply"
   if (row.runtime === "running") return "running"
   if (row.runtime === "failed") return "failed"
@@ -483,10 +496,13 @@ function statusText(row) {
   return "stopped"
 }
 
-function subtitleText(row) {
-  var owner = row.ownership === "flake" ? "declared in your flake"
+function ownershipText(row) {
+  return row.ownership === "flake" ? "declared in your flake"
     : row.ownership === "managed-unsupported" ? "apps.nix, edited by hand" : ""
-  return join([row.kind, row.template, owner])
+}
+
+function subtitleText(row) {
+  return join([row.kind, row.template, ownershipText(row)])
 }
 
 var ROW_FIELDS = ["name", "kind", "template", "runtime", "ownership", "subtitle", "status",
@@ -1462,6 +1478,7 @@ function listActions(state, c) {
 function hiddenReason(row, state, verb) {
   var s = state || {}
   if (!row) return ""
+  if (row.kind === "permanent" && row.ownership === "removed") return "removed, pending apply"
   if (row.kind === "disposable") {
     if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
     if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
