@@ -224,7 +224,7 @@ test("reviewCommandLines shows the whole command (#25)", () => {
     ["nixarchy-service-enable", "microvm"],
     ["/nix/store/abc/nixarchy.pkg/bin/nixarchy-pkg", "opt", "set", OPT, SNIP]
   ]
-  const lines = Model.reviewCommandLines(argvs, SNIP, OPT)
+  const lines = Model.reviewCommandLines(argvs, SNIP)
   eq(lines.length, 2)
 
   // Nothing is truncated: every input token survives whole, or is deliberately
@@ -240,8 +240,8 @@ test("reviewCommandLines shows the whole command (#25)", () => {
   ok(lines[1].indexOf("‹the line above›") !== -1)
   ok(lines[1].indexOf("template =") === -1)
 
-  eq(Model.reviewCommandLines([], SNIP, OPT), [])
-  eq(Model.reviewCommandLines(null, "", ""), [])
+  eq(Model.reviewCommandLines([], SNIP), [])
+  eq(Model.reviewCommandLines(null, ""), [])
 })
 
 test("one name rule for every apps.nix writer (#38)", () => {

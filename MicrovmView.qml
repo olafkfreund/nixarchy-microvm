@@ -174,7 +174,15 @@ FocusScope {
 
   function openReview(form) {
     root.reviewForm = form
+    reviewScroll.contentY = 0
     setMode("review")
+  }
+
+  // j/k and the arrows in the review: one line, kept inside the content.
+  function scrollReview(dir) {
+    var line = Math.ceil(root.fontSize.caption * 1.4)
+    var max = Math.max(0, reviewScroll.contentHeight - reviewScroll.height)
+    reviewScroll.contentY = Math.max(0, Math.min(max, reviewScroll.contentY + dir * line))
   }
 
   // A refused submit changes nothing. It used to clear reviewForm and go back
@@ -531,75 +539,96 @@ FocusScope {
           id: review
           visible: root.mode === "review"
           anchors.fill: parent
-          implicitHeight: reviewColumn.implicitHeight
+          // Natural, never capped: capping it by the body budget loops through bodyNatural.
+          implicitHeight: reviewColumn.implicitHeight + reviewFooter.implicitHeight + Style.spacing.md
 
           Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) { root.setMode("form"); Qt.callLater(createForm.focusCurrent); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitForm(root.reviewForm); event.accepted = true }
+            else if (event.key === Qt.Key_J || event.key === Qt.Key_Down) { root.scrollReview(1); event.accepted = true }
+            else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) { root.scrollReview(-1); event.accepted = true }
           }
 
-          Column {
-            id: reviewColumn
-            spacing: Style.spacing.md
+          Flickable {
+            id: reviewScroll
+            width: parent.width
+            height: review.height - reviewFooter.height - Style.spacing.md
+            contentHeight: reviewColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
-            Text {
-              text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.body
-              font.bold: true
-            }
+            Column {
+              id: reviewColumn
+              width: parent.width
+              spacing: Style.spacing.md
 
-            Text {
-              text: "This line goes into ~/.config/nixarchy/apps.nix:"
-              textFormat: Text.PlainText
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-            }
+              Text {
+                width: parent.width
+                text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.body
+                font.bold: true
+              }
 
-            Text {
-              text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              wrapMode: Text.WrapAnywhere
-            }
+              Text {
+                width: parent.width
+                text: "This line goes into ~/.config/nixarchy/apps.nix:"
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+              }
 
-            Text {
-              readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
-              text: blocked !== "" ? blocked
-                : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet,
-                    root.reviewForm ? Model.optPath(root.reviewForm.name) : "").join("\n")
-              textFormat: Text.PlainText
-              color: blocked !== "" ? Color.urgent : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              // A command is one unbroken string; wrapping it anywhere is
-              // better than hiding its tail, which is what truncation did.
-              wrapMode: Text.WrapAnywhere
-            }
+              Text {
+                width: parent.width
+                text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WrapAnywhere
+              }
 
-            Text {
-              text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
-              textFormat: Text.PlainText
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              wrapMode: Text.WordWrap
-            }
+              Text {
+                width: parent.width
+                readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
+                text: blocked !== "" ? blocked
+                  : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet).join("\n")
+                textFormat: Text.PlainText
+                color: blocked !== "" ? Color.urgent : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                // A command is one unbroken string; wrapping it anywhere is
+                // better than hiding its tail, which is what truncation did.
+                wrapMode: Text.WrapAnywhere
+              }
 
-            Text {
-              horizontalAlignment: Text.AlignRight
-              text: "enter write it   esc back to the form"
-              textFormat: Text.PlainText
-              color: root.foreground
-              opacity: 0.65
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
+              Text {
+                width: parent.width
+                text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
+              }
             }
+          }
+
+          Text {
+            id: reviewFooter
+            anchors.bottom: parent.bottom
+            width: parent.width
+            horizontalAlignment: Text.AlignRight
+            text: "enter write it   esc back to the form"
+              + (reviewScroll.contentY + reviewScroll.height < reviewScroll.contentHeight ? "   ↓ more" : "")
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: 0.65
+            font.family: root.fontFamily
+            font.pixelSize: root.fontSize.caption
           }
         }
 

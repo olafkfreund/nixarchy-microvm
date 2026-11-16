@@ -64,6 +64,7 @@ var SHORTCUTS = [
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
+  { group: "Form", keys: "j  k  ↑ ↓", text: "In the review: scroll the line" },
   { group: "Form", keys: "j  k", text: "Move between fields; on a text field they type, so use tab" },
   { group: "Form", keys: "↓", text: "Open the picker under a template or key field" },
   { group: "Form", keys: "esc", text: "Cancel" },
@@ -576,7 +577,7 @@ function bodyBudget(total, chrome) {
 // The snippet is rendered as a reference rather than repeated, because the
 // review already prints it in full immediately above; measuring nothing keeps
 // this independent of the card's width.
-function reviewCommandLines(argvs, snippet, optPath) {
+function reviewCommandLines(argvs, snippet) {
   var out = []
   var list = argvs || []
   for (var i = 0; i < list.length; i++) {
