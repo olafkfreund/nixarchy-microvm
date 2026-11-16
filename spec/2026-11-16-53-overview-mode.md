@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 53
 intent: intent/2026-11-16-53-overview-mode.md
 ---
