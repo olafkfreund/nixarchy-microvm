@@ -134,12 +134,12 @@ numbers; the form validates them as if you had typed them, and you confirm.
 
 **There are two ways in.** Click the glyph for the popup, or press
 <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> (or pick **MicroVMs** in the
-Omarchy menu) for a larger full-screen view that holds the keyboard until you
-are done.
+Omarchy menu) for a larger card, centred near the top, that holds the keyboard
+until you are done.
 
 <figure class="shot">
-  <img src="img/menu.png" alt="The full-screen menu" loading="lazy">
-  <figcaption>The full-screen menu: the same list, form and log, drawn larger. Here, two disposable VMs run next to a permanent one written moments ago and waiting for <kbd>a</kbd> to apply it.</figcaption>
+  <img src="img/menu.png" alt="The menu" loading="lazy">
+  <figcaption>The menu: the same list, form and log, drawn larger. Here, two disposable VMs run next to a permanent one written moments ago and waiting for <kbd>a</kbd> to apply it.</figcaption>
 </figure>
 
 ## How it works

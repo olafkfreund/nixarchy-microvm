@@ -22,12 +22,12 @@ The whole thing runs from the keyboard and follows your Omarchy theme. It comes
 in two forms:
 
 - **a bar widget**, whose popup opens under the glyph;
-- **a full-screen menu** on a key or an Omarchy menu row.
+- **a menu** on a key or an Omarchy menu row, centred near the top of the screen.
 
 Both share one state, so a job started in one is visible, and locked, in the
 other.
 
-[![The full-screen menu: two running disposable VMs and a permanent VM pending apply, in one list](docs/img/menu.png)](https://olafkfreund.github.io/nixarchy-microvm/)
+[![The menu: two running disposable VMs and a permanent VM pending apply, in one list](docs/img/menu.png)](https://olafkfreund.github.io/nixarchy-microvm/)
 
 The showcase, with real captures and recordings, is at
 [olafkfreund.github.io/nixarchy-microvm](https://olafkfreund.github.io/nixarchy-microvm/).

@@ -559,6 +559,19 @@ function cardWidth(available, fraction, min, max) {
   return Math.max(lo, Math.min(hi, Math.round(available * fraction)))
 }
 
+// The menu card's size and top offset on a screen, in pixels; a floor size
+// while no screen is known (#50).
+function menuGeometry(screenW, screenH, minW, maxW, viewNaturalH, insetX, insetY, gaps) {
+  if (screenW > 0 && screenH > 0) {
+    var viewW = cardWidth(screenW, 0.55, minW, maxW)
+    var width = Math.round(Math.min(viewW + insetX, Math.round(screenW * 0.9)))
+    var height = Math.round(Math.min(viewNaturalH + insetY, Math.round(screenH * 0.85)))
+    return { width: width, height: height, top: Math.round(Math.max(gaps, Math.round((screenH - height) / 3))) }
+  }
+  return { width: Math.round(Math.min(minW, maxW) + insetX),
+    height: Math.round(viewNaturalH + insetY), top: Math.round(gaps) }
+}
+
 // What is left for the scrolling part once the fixed chrome has its share.
 function bodyBudget(total, chrome) {
   if (!(total > 0)) return 0

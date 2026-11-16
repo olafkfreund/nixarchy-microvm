@@ -11,7 +11,9 @@ import "Model.js" as Model
 //
 // The same list, form and log as the bar popup (it hosts the same
 // MicrovmView, over the same MicrovmState), but it does not need the widget
-// to be in the bar, and it holds the keyboard for as long as it is up.
+// to be in the bar. It holds the keyboard for as long as it is up. The layer
+// covers the screen only to catch a click outside the card, which closes it;
+// nothing is dimmed (#50: a Hyprland focus grab let that click through).
 //
 //   omarchy-shell shell toggle nixarchy.microvm '{}'
 //   omarchy-shell shell toggle nixarchy.microvm '{"create":true}'
@@ -25,10 +27,16 @@ Item {
   property bool opened: false
   property var targetScreen: null
 
+  readonly property var screenFor: root.targetScreen
+    || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+
   // The menu takes a share of the monitor it opens on, not a fixed rem width.
-  // 1100 matches nixarchy.pkg's menu; card.width keeps panel.width * 0.9 as a
-  // hard ceiling on top of this.
-  readonly property int viewWidth: Model.cardWidth(panel.width, 0.55, Style.space(560), Style.space(1100))
+  // 1100 matches nixarchy.pkg's menu.
+  readonly property var geometry: Model.menuGeometry(
+    screenFor ? screenFor.width : 0, screenFor ? screenFor.height : 0,
+    Style.space(560), Style.space(1100), view.implicitHeight,
+    card.contentLeftInset + card.contentRightInset,
+    card.contentTopInset + card.contentBottomInset, Style.gapsOut)
 
   function focusedScreen() {
     var monitor = Hyprland.focusedMonitor
@@ -89,7 +97,7 @@ Item {
   PanelWindow {
     id: panel
     visible: root.opened
-    screen: root.targetScreen
+    screen: root.screenFor
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
@@ -100,13 +108,7 @@ Item {
 
     onVisibleChanged: if (visible) Qt.callLater(function() { view.focusForMode() })
 
-    Rectangle {
-      anchors.fill: parent
-      color: Commons.Color.menu.scrim
-    }
-
-    // A click away closes, as every summoned surface here does. The card
-    // swallows its own clicks so they never reach this.
+    // A click anywhere but the card closes the menu and goes no further.
     MouseArea {
       anchors.fill: parent
       onClicked: root.close()
@@ -114,12 +116,10 @@ Item {
 
     BorderSurface {
       id: card
-      width: Math.min(root.viewWidth + card.contentLeftInset + card.contentRightInset,
-                      Math.round(panel.width * 0.9))
-      height: Math.min(view.implicitHeight + card.contentTopInset + card.contentBottomInset,
-                       Math.round(panel.height * 0.85))
+      width: root.geometry.width
+      height: root.geometry.height
       anchors.horizontalCenter: parent.horizontalCenter
-      y: Math.max(Style.gapsOut, Math.round((panel.height - height) / 3))
+      y: root.geometry.top
       color: Commons.Color.popups.background
       borderSpec: Border.surfaceSpec("popups", "border", Commons.Color.popups.border, Math.max(1, Style.space(2)))
       padding: Style.spacing.popupPadding

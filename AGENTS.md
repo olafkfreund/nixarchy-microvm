@@ -12,7 +12,7 @@ Quickshell QML. It manages the two kinds of NixOS MicroVM that
 surfaces:
 
 - **a bar widget**, whose popup sits under the glyph (`Panel.qml`);
-- **a full-screen keyboard menu** (`Menu.qml`).
+- **a keyboard menu** (`Menu.qml`).
 
 The two kinds:
 
@@ -42,7 +42,7 @@ form, never for an action.
 | `MicrovmView.qml` | Interaction: modes (list / form / review / log), cursor, filter, confirmations, keys. Shared by both surfaces. |
 | `VmList.qml`, `CreateForm.qml`, `LogView.qml`, `ShortcutSheet.qml` | Drawing pieces used by the view. |
 | `Panel.qml` | The bar widget host: glyph, `KeyboardPanel` popup, and IPC target `nixarchy.microvm.bar`. |
-| `Menu.qml` | The full-screen menu host (manifest kind `menu`). It sizes its card from the focused screen and hosts the view unscaled. |
+| `Menu.qml` | The menu host (manifest kind `menu`). A full-screen, undimmed layer that only catches a click outside the card; the card is sized and placed from the focused screen (`Model.menuGeometry`). |
 | `manifest.json` | Plugin id `nixarchy.microvm`, kinds `menu` + `bar-widget`, `keepLoaded: true`, settings schema. |
 | `flake.nix` | The package (an explicit `files` list, copied as real files) and `checks.<system>.default`. |
 | `share/omarchy-menu.jsonc` | The Omarchy menu row users paste in. |
@@ -97,7 +97,7 @@ d=$(mktemp -d) && git clone -q . "$d/p" && rm -rf "$d/p/.git" && omarchy plugin 
      `'{"create":true}'` to open straight into the form;
    - the popup: `omarchy shell nixarchy.microvm.bar open`.
 5. **Confirm what is up** with `hyprctl layers -j`. The menu's namespace is
-   `nixarchy-microvm-menu`.
+   `nixarchy-microvm-menu` (full-screen, but drawn only where the card is).
 6. **Test VMs:** disposable ones named `t1`, `t2` and so on, removed with
    `nixarchy vm rm` when done. A permanent test machine is one `p1` line in
    `apps.nix`, removed with `nixarchy-opt-remove
