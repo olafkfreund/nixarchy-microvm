@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 // Everything you can press: the list, the filter, the questions, and the
@@ -11,7 +12,7 @@ import "Model.js" as Model
 FocusScope {
   id: root
 
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property string fontFamily: Style.font.family
   readonly property color dim: Qt.darker(foreground, 1.5)
 
@@ -129,6 +130,8 @@ FocusScope {
   // Focusing it is therefore how a question takes the keyboard *away from the
   // filter*, which is the whole fix.
   function focusForMode() {
+    // A Qt.callLater can land after the view is destroyed, when the Model import is null.
+    if (!Model) return
     var target = Model.focusTarget({ mode: root.mode, confirmOpen: root.confirmOpen })
     if (target === "log") logView.forceActiveFocus()
     else if (target === "form") createForm.focusCurrent()
@@ -411,7 +414,7 @@ FocusScope {
 
           iconComponent: Text {
             text: Model.Glyph.vm
-            color: MicrovmState.counts.failing > 0 ? Color.urgent : root.foreground
+            color: MicrovmState.counts.failing > 0 ? Commons.Color.urgent : root.foreground
             font.family: root.fontFamily
             font.pixelSize: root.fontSize.display
           }
@@ -449,7 +452,7 @@ FocusScope {
               iconText: Model.Glyph.apply
               tooltipText: "Apply queued changes: nixarchy-apply in a terminal  (a)"
               foreground: root.foreground
-              hoverColor: Color.accent
+              hoverColor: Commons.Color.accent
               fontFamily: root.fontFamily
               onClicked: root.apply()
             }
@@ -601,7 +604,7 @@ FocusScope {
                 text: blocked !== "" ? blocked
                   : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet).join("\n")
                 textFormat: Text.PlainText
-                color: blocked !== "" ? Color.urgent : root.dim
+                color: blocked !== "" ? Commons.Color.urgent : root.dim
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.caption
                 // A command is one unbroken string; wrapping it anywhere is
@@ -723,7 +726,7 @@ FocusScope {
             anchors.top: parent.top
             text: Model.Glyph.alert
             textFormat: Text.PlainText
-            color: Color.urgent
+            color: Commons.Color.urgent
             font.family: root.fontFamily
             font.pixelSize: root.fontSize.iconSmall
           }
@@ -737,7 +740,7 @@ FocusScope {
             anchors.top: parent.top
             text: MicrovmState.lastError
             textFormat: Text.PlainText
-            color: Color.urgent
+            color: Commons.Color.urgent
             font.family: root.fontFamily
             font.pixelSize: root.fontSize.caption
             wrapMode: Text.WordWrap
@@ -777,7 +780,7 @@ FocusScope {
             return root.hintText
           }
           textFormat: Text.PlainText
-          color: MicrovmState.streaming || root.listActions.apply ? Color.accent : root.dim
+          color: MicrovmState.streaming || root.listActions.apply ? Commons.Color.accent : root.dim
           font.family: root.fontFamily
           font.pixelSize: root.fontSize.caption
           wrapMode: Text.WordWrap
@@ -847,7 +850,7 @@ FocusScope {
       z: 5
       opened: root.helpOpen
       foreground: root.foreground
-      background: Color.popups.background
+      background: Commons.Color.popups.background
       fontFamily: root.fontFamily
           fontSize: root.fontSize
       onDismissed: root.helpOpen = false
@@ -860,7 +863,7 @@ FocusScope {
       opened: root.confirmOpen
       message: root.confirmMessage
       confirmText: root.confirmLabel
-      background: Color.popups.background
+      background: Commons.Color.popups.background
       foreground: root.foreground
       fontFamily: root.fontFamily
       onCanceled: root.closeConfirm()

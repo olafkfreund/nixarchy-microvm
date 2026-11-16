@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Ui
 import qs.Commons
+import qs.Commons as Commons
 import "Model.js" as Model
 
 // The `?` sheet. Omarchy is a keyboard-first shell, so the panel says out
@@ -11,8 +12,8 @@ Item {
   id: root
 
   property bool opened: false
-  property color foreground: Color.foreground
-  property color background: Color.popups.background
+  property color foreground: Commons.Color.foreground
+  property color background: Commons.Color.popups.background
   property string fontFamily: Style.font.family
   property var fontSize: ({ caption: Style.font.caption, body: Style.font.body, display: Style.font.display, iconSmall: Style.font.iconSmall, icon: Style.font.icon })
 
@@ -111,7 +112,7 @@ Item {
                   width: Style.space(90)
                   text: modelData.keys
                   textFormat: Text.PlainText
-                  color: Color.accent
+                  color: Commons.Color.accent
                   font.family: root.fontFamily
                   font.pixelSize: root.fontSize.caption
                   elide: Text.ElideRight
