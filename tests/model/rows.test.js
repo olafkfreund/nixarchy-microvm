@@ -248,6 +248,20 @@ test("menuGeometry keeps a nonzero natural size before the screen is known (#50)
     { width: 592, height: 724, top: 16 })
 })
 
+test("menuGeometry: the gap floor, one unknown axis, fractions and a swapped floor (#50 review)", () => {
+  // A card taller than the screen allows still keeps the gap above it.
+  eq(Model.menuGeometry(2560, 100, 560, 1100, 900, 32, 24, 16).top, 16)
+  // One axis unknown is no screen.
+  eq(Model.menuGeometry(2560, 0, 560, 1100, 700, 32, 24, 16), { width: 592, height: 724, top: 16 })
+  eq(Model.menuGeometry(0, 1440, 560, 1100, 700, 32, 24, 16), { width: 592, height: 724, top: 16 })
+  // Style.space() returns fractions; the result is whole pixels.
+  const g = Model.menuGeometry(1920, 1080, 560.4, 1100.6, 300.3, 10.5, 10.5, 12.3)
+  ok(Number.isInteger(g.width) && Number.isInteger(g.height) && Number.isInteger(g.top))
+  // The real 1100 ceiling, and a floor above the ceiling.
+  eq(Model.menuGeometry(2560, 1440, 560, 1100, 700, 32, 24, 16).width, 1132)
+  eq(Model.menuGeometry(2560, 1440, 1100, 560, 700, 32, 24, 16).width, 1132)
+})
+
 test("bodyBudget is what the chrome leaves (#24)", () => {
   eq(Model.bodyBudget(1000, 200), 800)
   eq(Model.bodyBudget(0, 200), 0)

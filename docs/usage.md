@@ -106,9 +106,10 @@ rather than looking for a setting here.
 
 ## The menu
 
-The menu has the same list, form and log, on a bigger card. It opens centred,
-without dimming the screen, over whatever you were working in. It holds the
-keyboard until you close it with Esc or a click outside:
+The menu has the same list, form and log, on a bigger card. It opens centred
+near the top of the focused screen, without dimming it, over whatever you were
+working in. It holds the keyboard until you close it with Esc, or with a click
+outside the card on the same screen:
 
 ```bash
 omarchy-shell shell toggle nixarchy.microvm '{}'

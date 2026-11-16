@@ -22,7 +22,7 @@ The whole thing runs from the keyboard and follows your Omarchy theme. It comes
 in two forms:
 
 - **a bar widget**, whose popup opens under the glyph;
-- **a menu** on a key or an Omarchy menu row, centred on the screen.
+- **a menu** on a key or an Omarchy menu row, centred near the top of the screen.
 
 Both share one state, so a job started in one is visible, and locked, in the
 other.

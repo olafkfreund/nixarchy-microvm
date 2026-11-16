@@ -134,7 +134,7 @@ numbers; the form validates them as if you had typed them, and you confirm.
 
 **There are two ways in.** Click the glyph for the popup, or press
 <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd> (or pick **MicroVMs** in the
-Omarchy menu) for a larger card, centred on the screen, that holds the keyboard
+Omarchy menu) for a larger card, centred near the top, that holds the keyboard
 until you are done.
 
 <figure class="shot">
