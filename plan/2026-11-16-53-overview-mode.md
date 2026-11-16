@@ -377,3 +377,10 @@ self-contained: every contract that step 1 implements is copied here.
 - Steps 2–4 depend on step 1, and step 4 depends on 2 and 3. Revert them
   together.
 - Step 5 depends on step 4: revert them together.
+
+## Deviations recorded during implementation
+
+- **Step 2** adds a small `commitSide(side, out, code)` helper, so the two
+  processes share one `commitStats` call. It holds no logic of its own. It
+  also returns early when `!wantStats` (lead), so a read that finishes after
+  the overview closed cannot refill the maps that closing cleared.

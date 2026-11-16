@@ -39,17 +39,66 @@ Singleton {
 
   property int bars: 0
   property int views: 0
+  property int statsHolders: 0
   readonly property bool background: bars > 0
   readonly property bool active: views > 0
+  // Readings are taken only while a surface is open in the overview.
+  readonly property bool wantStats: active && statsHolders > 0
+
+  onWantStatsChanged: {
+    if (wantStats) readStats()
+    else { stats = {}; history = {}; base = {}; meminfo = null }
+  }
 
   function acquire(kind) {
     if (kind === "bar") bars += 1
+    else if (kind === "stats") statsHolders += 1
     else views += 1
   }
 
   function release(kind) {
     if (kind === "bar") bars = Math.max(0, bars - 1)
+    else if (kind === "stats") statsHolders = Math.max(0, statsHolders - 1)
     else views = Math.max(0, views - 1)
+  }
+
+  // ------------------------------------------------------------ readings
+
+  property var stats: ({})
+  property var history: ({})
+  property var base: ({})
+  property var meminfo: null
+  property int statsReads: 0
+
+  function runningUnits(system) {
+    var out = []
+    for (var i = 0; i < allRows.length; i++) {
+      var r = allRows[i]
+      if (r.runtime !== "running" || (r.kind === "permanent") !== system) continue
+      var u = Model.unitFor(r)
+      if (u) out.push(u)
+    }
+    return out
+  }
+
+  function readStats() {
+    if (!wantStats) return
+    var sides = [[false, statsUserProcess], [true, statsSystemProcess]]
+    for (var i = 0; i < sides.length; i++) {
+      var argv = Model.statsArgv(runningUnits(sides[i][0]), sides[i][0])
+      if (argv && !sides[i][1].running) { sides[i][1].command = argv; sides[i][1].running = true }
+    }
+    meminfoFile.reload()
+    statsReads += 1
+  }
+
+  function commitSide(side, out, code) {
+    // A read that ends after the overview closed must not refill what closing cleared.
+    if (!wantStats) return
+    var r = Model.commitStats({ stats: stats, history: history, base: base }, side,
+      code === 0 ? Model.parseUnitStats(out, Date.now()) : null,
+      runningUnits(side === "system"), Date.now())
+    stats = r.stats; history = r.history; base = r.base
   }
 
   // ------------------------------------------------------------ features
@@ -603,7 +652,9 @@ Singleton {
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
       lastError: root.lastError,
-      listError: root.listError
+      listError: root.listError,
+      statsHolders: root.statsHolders,
+      statsReads: root.statsReads
     })
   }
 
@@ -630,6 +681,7 @@ Singleton {
           root.listError = Model.listFailure(listErr.text, code)
         }
         root.onListResult()
+        root.readStats()
         return
       }
       root.listOk = true
@@ -639,6 +691,7 @@ Singleton {
       root.listTooOld = !root.lastListOk
       root.vms = root.listTooOld ? [] : Model.parseVmList(listOut.text)
       root.onListResult()
+      root.readStats()
     }
   }
 
@@ -651,7 +704,28 @@ Singleton {
     onExited: function(code) {
       if (code === 0) { root.units = Model.parseUnits(unitsOut.text); root.unitsStale = false }
       else root.unitsStale = true
+      root.readStats()
     }
+  }
+
+  Process {
+    id: statsUserProcess
+    stdout: StdioCollector { id: statsUserOut; waitForEnd: true }
+    onExited: function(code) { root.commitSide("user", statsUserOut.text, code) }
+  }
+
+  Process {
+    id: statsSystemProcess
+    stdout: StdioCollector { id: statsSystemOut; waitForEnd: true }
+    onExited: function(code) { root.commitSide("system", statsSystemOut.text, code) }
+  }
+
+  FileView {
+    id: meminfoFile
+    path: root.wantStats ? "/proc/meminfo" : ""
+    printErrors: false
+    onLoaded: root.meminfo = Model.parseMeminfo(text())
+    onLoadFailed: root.meminfo = null
   }
 
   Process {
