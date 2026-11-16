@@ -155,7 +155,9 @@ Singleton {
   // Follow-up commands of a multi-step action (create permanent = enable the
   // service, then write the line).
   property var queue: []
-  readonly property bool mutating: actionProcess.running || streamProcess.running || queue.length > 0
+  property var next: null
+  property bool abandoning: false
+  readonly property bool mutating: actionProcess.running || streamProcess.running || queue.length > 0 || next !== null
 
   // --------------------------------------------------------------- stream
 
@@ -231,9 +233,11 @@ Singleton {
 
   function launch(proc, argv) {
     root.pendingCommand = Model.commandName(argv)
-    root.escapable = false
-    escapeTimer.stop()
-    if (proc === actionProcess) escapeTimer.restart()
+    if (root.next === null) {
+      root.escapable = false
+      escapeTimer.stop()
+      if (proc === actionProcess) escapeTimer.restart()
+    }
     proc.stdinEnabled = true
     proc.command = argv
     proc.running = true
@@ -243,15 +247,18 @@ Singleton {
 
   // Every mutation comes through here. Refuses, with a reason, while anything
   // else mutates; the argv is null when an input failed validation.
-  function run(argvs, verb, key) {
+  function run(argvs, verb, key, nextStep) {
     if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argvs || argvs.length === 0) return false
     for (var i = 0; i < argvs.length; i++) if (!argvs[i]) return false
     root.lastError = ""
+    root.next = nextStep || null
+    root.abandoning = false
     root.pendingVerb = verb
     root.pendingKey = key || ""
     root.queue = argvs.slice(1)
+    escapeTimer.restart()
     root.launch(actionProcess, argvs[0])
     return true
   }
@@ -295,16 +302,31 @@ Singleton {
     return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
   }
 
-  function startStream(argv, title) {
-    if (root.mutating) { root.lastError = root.busyText(); return false }
-    if (!argv) return false
+  function beginStream(argv, title, keepLog) {
     root.lastError = ""
     root.streamTitle = title
     root.streamExit = -1
-    root.log = ["$ " + title]
+    root.log = keepLog ? Model.capLog(root.log, ["$ " + title]) : ["$ " + title]
     root.pendingLines = []
     root.launch(streamProcess, argv)
     return true
+  }
+
+  function startStream(argv, title) {
+    if (root.mutating) { root.lastError = root.busyText(); return false }
+    if (!argv) return false
+    return root.beginStream(argv, title, false)
+  }
+
+  function advance(decision) {
+    if (root.next === null) return
+    var step = decision || Model.continueAfter(root.next, { type: "exit", ok: true, phase: "advance" })
+    if (step.do === "stream") root.beginStream(Model.runDetachArgv(step.name), "run " + step.name, true)
+    else if (step.do === "rm") root.launch(actionProcess, Model.rmVmArgv(step.name))
+    else if (step.do === "stop") root.launch(actionProcess, Model.stopVmArgv(step.name))
+    else if (step.do === "wait") waitTimer.restart()
+    else if (step.do === "fail") root.lastError = step.message
+    root.next = step.next
   }
 
   // A nix build emits thousands of lines. Appending each one reassigned a var
@@ -341,12 +363,29 @@ Singleton {
   // says the process is gone, so a release can never race a live opt set.
   Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
   Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
+  Timer { id: waitTimer; interval: 2000 }
+  Timer { id: deadlineTimer; interval: 90000 }
 
   function abandon() {
-    if (!actionProcess.running) return
-    root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
-    actionProcess.signal(15)
-    killTimer.restart()
+    if (!actionProcess.running && root.next === null) return
+    if (root.next !== null) {
+      var waiting = root.next.kind === "wait" || root.next.kind === "rm" || (root.next.kind === "last" && root.pendingVerb === "deleting")
+      var name = root.next.name
+      waitTimer.stop()
+      deadlineTimer.stop()
+      root.next = null
+      root.lastError = waiting ? "gave up waiting for " + name + "; nothing was deleted" : "giving up on " + root.pendingVerb + " — asking it to stop"
+      root.abandoning = true
+    } else root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
+    if (actionProcess.running) {
+      actionProcess.signal(15)
+      killTimer.restart()
+    } else {
+      root.pendingVerb = ""
+      root.pendingKey = ""
+      root.escapable = false
+      escapeTimer.stop()
+    }
   }
 
   Timer {
@@ -679,8 +718,9 @@ Singleton {
       // nixarchy-pkg's writers exit 0 and say no in JSON instead.
       var refused = Model.writerError(actionOut.text)
       var failed = code !== 0 || refused !== ""
+      var decision = Model.continueAfter(root.next, { type: "exit", ok: !failed, phase: root.next && root.next.resending ? "resend" : root.pendingCommand })
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
-      if (failed) {
+      if (failed && !root.abandoning && decision.do !== "wait") {
         var why = Model.processFailure({
           verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
           command: root.pendingCommand, code: code,
@@ -692,9 +732,23 @@ Singleton {
         root.lastError = why
         root.queue = []
       }
-      root.escapable = false
-      escapeTimer.stop()
+      if (decision.do === "fail") root.next = null
+      if (root.next === null) {
+        root.escapable = false
+        escapeTimer.stop()
+      }
       killTimer.stop()
+      if (root.abandoning) {
+        root.abandoning = false
+        root.pendingVerb = ""
+        root.pendingKey = ""
+        if (root.active || root.background) root.refresh()
+        return
+      }
+      if (root.next !== null && root.queue.length === 0 && decision.do !== "fail") {
+        Qt.callLater(function() { root.advance(decision) })
+        return
+      }
       if (root.queue.length > 0) {
         // Started on the next tick, not from inside this process's own exit.
         // The queue is only consumed in the same synchronous step that starts
@@ -708,6 +762,7 @@ Singleton {
         })
         return
       }
+      root.next = null
       root.pendingVerb = ""
       root.pendingKey = ""
       if (root.active || root.background) root.refresh()
@@ -730,6 +785,11 @@ Singleton {
       root.appendLog("── exit " + code + " · " + (code === 0 ? "done" : "failed"))
       root.flushLog()
       if (code !== 0) root.lastError = Model.processFailure({ verb: root.streamTitle, code: code }) + " — o shows the log"
+      root.next = null
+      root.pendingVerb = ""
+      root.pendingKey = ""
+      root.escapable = false
+      escapeTimer.stop()
       if (root.active || root.background) root.refresh()
     }
   }

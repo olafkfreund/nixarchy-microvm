@@ -1482,6 +1482,36 @@ function pendingName(pendingKey) {
   return colon === -1 ? "" : key.substring(colon + 1)
 }
 
+// The next command is chosen here; QML only carries it out after the process exits.
+function continueAfter(next, event) {
+  if (!event || (event.type !== "exit" && event.type !== "tick")) return { do: "fail", message: "invalid continuation event", next: null }
+  if (event.type === "exit") {
+    if (next && next.kind === "wait" && next.resending) {
+      var waiting = Object.assign({}, next)
+      waiting.resending = false
+      return { do: "wait", next: waiting }
+    }
+    if (!event.ok) return { do: "fail", message: "command failed", next: null }
+    if (!next || next.kind === "last") return { do: "done", next: null }
+    if (next.kind === "stream" || next.kind === "rm") return { do: next.kind, name: next.name, next: { kind: "last", name: next.name } }
+    if (next.kind === "wait") return { do: "wait", next: next }
+  } else if (next && next.kind === "wait") {
+    var step = removeWaitStep(next, event.listOk, event.listGen, event.stopped, event.now)
+    if (step === "rm") return { do: "rm", name: next.name, next: { kind: "last", name: next.name } }
+    if (step === "resend") return { do: "stop", name: next.name, next: Object.assign({}, next, { resent: true, resending: true }) }
+    if (step === "timeout") return { do: "fail", message: next.name + " did not stop within 90 s; nothing was deleted", next: null }
+    return { do: "wait", next: next }
+  }
+  return { do: "fail", message: "invalid continuation step", next: null }
+}
+
+function removeWaitStep(wait, listOk, listGen, stopped, now) {
+  if (now - wait.since >= 90000) return "timeout"
+  if (listOk && listGen > wait.afterGen && stopped) return "rm"
+  if (now - wait.since >= 30000 && !wait.resent) return "resend"
+  return "wait"
+}
+
 function removeMessage(row, stateDir) {
   if (!row) return ""
   if (row.kind === "disposable") {

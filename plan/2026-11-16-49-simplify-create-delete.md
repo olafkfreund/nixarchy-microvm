@@ -473,3 +473,16 @@ text below, they win.**
 - Steps 3–5 depend on each other (the continuation), and step 8 on step 4's
   `submitOwner`. Revert them together.
 - Before merge, drop the branch. After merge, revert the merge commit.
+
+## Deviations recorded during implementation
+
+- **Step 1** was implemented by Codex through `agent-run`, not
+  `herdr-team`: `herdr-team` refused to launch in the `/tmp` worktree ("the
+  launcher did not start").
+- **Step 2:** an old-format list (`listTooOld`) reports
+  `Model.upstreamVerdict("", "", false)`, the nixarchy#762 message itself,
+  rather than a separate string.
+- **Step 3** also adds `Model.removeWaitStep`, which the plan placed in step
+  5, because `continueAfter` uses it for ticks. Its tests are in the new
+  `tests/model/continuation.test.js`. Step 5 wires the wait timer, the
+  deadline and `remove()`, and adds no new pure logic.
