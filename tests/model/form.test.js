@@ -291,3 +291,12 @@ test("focusTarget: a question owns the keyboard, whatever the mode (#25)", () =>
   eq(Model.focusTarget({}), "list")
   eq(Model.focusTarget(null), "list")
 })
+
+test("keysMatching filters by file or key, and takes a sequence wrapper (B1 cleanup)", () => {
+  const keys = [{ file: "id_a.pub", key: "ssh-ed25519 AAAA1" }, { file: "work.pub", key: "ssh-ed25519 BBBB2" }]
+  eq(Model.keysMatching(keys, "").length, 2)
+  eq(Model.keysMatching(keys, "WORK")[0].file, "work.pub")
+  eq(Model.keysMatching(keys, "ssh-ed25519 aaaa1").length, 1)
+  eq(Model.keysMatching({ length: 1, 0: keys[0] }, "").length, 1)
+  eq(Model.keysMatching(null, "x").length, 0)
+})

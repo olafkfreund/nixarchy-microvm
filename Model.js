@@ -1148,6 +1148,16 @@ function hiddenFieldError(fields, errors) {
   return ""
 }
 
+function keysMatching(keys, query) {
+  var q = String(query || "").toLowerCase()
+  var out = []
+  for (var i = 0; i < (keys || []).length; i++) {
+    var k = keys[i]
+    if (!q || q === k.key.toLowerCase() || (k.file + " " + k.key).toLowerCase().indexOf(q) !== -1) out.push(k)
+  }
+  return out
+}
+
 function templatesMatching(templates, query) {
   var q = trim(query).toLowerCase()
   var out = []

@@ -71,7 +71,8 @@ FocusScope {
   // A new permanent VM on a services.nix without the microvm row (#6).
   readonly property string blocked: Model.permanentBlocked(form, features)
   readonly property var templateChoices: Model.templatesMatching(templates, form.template).slice(0, 6)
-  readonly property var keyChoices: keysMatching(form.sshKey).slice(0, 6)
+  readonly property string hiddenError: Model.hiddenFieldError(root.fields, root.check.errors)
+  readonly property var keyChoices: Model.keysMatching(sshKeys, form.sshKey).slice(0, 6)
   readonly property string title: form.editing ? "Edit " + form.name : "New VM"
 
   // The fixed parts, and then whatever the fields need. formColumn is no longer
@@ -80,16 +81,6 @@ FocusScope {
   readonly property int formChrome: headerRow.implicitHeight + hints.implicitHeight
     + formColumn.spacing * 2
   implicitHeight: formChrome + fieldsColumn.implicitHeight
-
-  function keysMatching(typed) {
-    var q = String(typed || "").toLowerCase()
-    var out = []
-    for (var i = 0; i < root.sshKeys.length; i++) {
-      var k = root.sshKeys[i]
-      if (!q || q === k.key.toLowerCase() || (k.file + " " + k.key).toLowerCase().indexOf(q) !== -1) out.push(k)
-    }
-    return out
-  }
 
   // Called every time the form opens: a clean form, cursor on the first field.
   function start(kind) {
@@ -492,6 +483,18 @@ FocusScope {
               }
             }
           }
+        }
+
+        // An error on a field this form does not show would block submit unseen.
+        Text {
+          visible: root.attempted && root.hiddenError !== ""
+          width: parent.width
+          text: root.hiddenError
+          textFormat: Text.PlainText
+          color: Color.urgent
+          font.family: root.fontFamily
+          font.pixelSize: root.fontSize.caption
+          wrapMode: Text.WordWrap
         }
       }
     }
