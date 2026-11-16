@@ -837,6 +837,7 @@ function tokens(value) {
 function parseShares(value, hostHome) {
   var list = tokens(value)
   var out = []
+  var guests = Object.create(null)
   for (var i = 0; i < list.length; i++) {
     var parts = list[i].split(":")
     if (parts.length !== 2) return { error: "Each share is host:guest" }
@@ -844,6 +845,8 @@ function parseShares(value, hostHome) {
     var guest = normalizeGuestPath(parts[1])
     if (!guest) return { error: "Guest paths are absolute, with no . or .. segments" }
     if (isReservedGuest(guest)) return { error: guest + " is already used inside the guest" }
+    if (Object.prototype.hasOwnProperty.call(guests, guest)) return { error: "Two shares mount at " + guest }
+    guests[guest] = true
     var source = expandHome(parts[0], hostHome)
     if (source === null) return { error: "HOME is not a plain absolute path, so ~/ cannot be expanded; write the path in full" }
     out.push({ source: source, mountPoint: guest })
@@ -958,6 +961,17 @@ function validateForm(form, rows, templates, hostHome) {
     else if (parseInt(trim(f.memory), 10) > 8192) warnings.memory = "More than 8 GiB is taken from the host while the VM runs"
     if (!isCores(f.cores)) errors.cores = "Between 1 and " + CORES_MAX
     if (!isPort(f.sshPort)) errors.sshPort = "Empty (no SSH), or a port from 1024 to 65535"
+    else if (trim(f.sshPort)) {
+      var port = parseInt(f.sshPort, 10)
+      for (var p = 0; p < (rows || []).length; p++) {
+        var row = rows[p]
+        if (row.kind === "permanent" && row.name !== name && trim(row.sshPort)
+            && parseInt(row.sshPort, 10) === port) {
+          errors.sshPort = "Port " + port + " is already used by " + row.name
+          break
+        }
+      }
+    }
     if (trim(f.sshKey) && !isSshKey(f.sshKey)) errors.sshKey = "Pick a key from ~/.ssh, or paste a public key line"
     if (trim(f.sshPort) && !trim(f.sshKey)) warnings.sshKey = "The guest's dev user has no password: without a key the port reaches a daemon nobody can log into"
     var shares = parseShares(f.shares, hostHome)
