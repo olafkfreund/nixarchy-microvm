@@ -295,11 +295,26 @@ Singleton {
   }
 
   // A submitted form: create (one or two commands) or edit (one).
-  function submit(form) {
+  property string submitOwner: ""
+
+  function submit(form, owner) {
     if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     var argvs = Model.submitArgvs(form, root.allRows, root.templates, root.home, root.featureState)
     if (!argvs) { root.lastError = Model.permanentBlocked(form, root.featureState) || "Nothing was written: the form or a needed feature is missing"; return false }
-    return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
+    var key = Model.rowKey(form.kind, form.name)
+    var name = Model.startAfterCreate(form)
+    if (!name) {
+      if (!run(argvs, form.editing ? "editing" : "creating", key)) return false
+      root.submitOwner = owner || ""   // step 8's Apply now asks only the submitting surface
+      return true
+    }
+    if (!run(argvs, "creating", key, { kind: "stream", name: name })) return false
+    root.submitOwner = owner || ""
+    root.streamTitle = "create " + name
+    root.streamExit = -1
+    root.log = ["$ create " + name]
+    root.pendingLines = []
+    return true
   }
 
   function beginStream(argv, title, keepLog) {
@@ -718,6 +733,8 @@ Singleton {
       // nixarchy-pkg's writers exit 0 and say no in JSON instead.
       var refused = Model.writerError(actionOut.text)
       var failed = code !== 0 || refused !== ""
+      if (root.next && root.next.kind === "stream")
+        root.log = Model.capLog(root.log, (actionOut.text + "\n" + actionErr.text).split("\n").filter(function(l) { return l !== "" }))
       var decision = Model.continueAfter(root.next, { type: "exit", ok: !failed, phase: root.next && root.next.resending ? "resend" : root.pendingCommand })
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed && !root.abandoning && decision.do !== "wait") {

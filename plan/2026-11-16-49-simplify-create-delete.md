@@ -486,3 +486,9 @@ text below, they win.**
   5, because `continueAfter` uses it for ticks. Its tests are in the new
   `tests/model/continuation.test.js`. Step 5 wires the wait timer, the
   deadline and `remove()`, and adds no new pure logic.
+- **Step 4** sets up the log (`"$ create <name>"`, `streamTitle`,
+  `streamExit`) in `submit()` right after `run()` succeeds, not inside
+  `run()`. QML is single-threaded, so the create cannot exit before
+  `submit()` returns, and `run()` stays free of stream code. `submitOwner`
+  is recorded on every successful submit, not only on create-and-start,
+  because step 8 needs it for permanent writes.

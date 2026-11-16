@@ -264,12 +264,21 @@ test("formFromRow fixes the name and carries the row's fields", () => {
 
 test("visibleFields: kind and agent decide what the form shows", () => {
   const keys = (f, state) => Model.visibleFields(f, state).map(x => x.key)
-  eq(keys(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true }), ["describe", "kind", "name", "template"])
-  eq(keys(Model.emptyForm("disposable"), { agent: "", aiAssist: true }), ["kind", "name", "template"])
+  eq(keys(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true }), ["describe", "kind", "name", "template", "startNow"])
+  eq(keys(Model.emptyForm("disposable"), { agent: "", aiAssist: true }), ["kind", "name", "template", "startNow"])
   eq(keys(Model.emptyForm("permanent"), { agent: "claude", aiAssist: false }), ["kind", "name", "template", "autostart", "memory", "cores", "sshPort", "sshKey", "shares"])
   eq(keys(Model.formFromRow(Model.rowByName(rows, "disposable", "alice")), { agent: "claude", aiAssist: true }), ["template"])
   eq(keys(Model.formFromRow(Model.rowByName(rows, "permanent", "p1")), { agent: "claude", aiAssist: true }), ["template", "autostart", "memory", "cores", "sshPort", "sshKey", "shares"])
   for (const f of Model.FORM_FIELDS) ok(f.key in Model.emptyForm(), f.key)
+})
+
+test("startAfterCreate: only a new disposable VM that asks for it", () => {
+  const d = Object.assign(Model.emptyForm("disposable"), { name: " t1 " })
+  eq(Model.startAfterCreate(d), "t1")
+  eq(Model.startAfterCreate(Object.assign({}, d, { startNow: false })), "")
+  eq(Model.startAfterCreate(Object.assign({}, d, { editing: true })), "")
+  eq(Model.startAfterCreate(Object.assign({}, d, { kind: "permanent" })), "")
+  eq(Model.startAfterCreate(null), "")
 })
 
 test("firstErrorIndex and formSummary", () => {

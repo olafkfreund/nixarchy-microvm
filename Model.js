@@ -915,6 +915,7 @@ function emptyForm(kind) {
     name: "",
     template: "shell",
     autostart: true,
+    startNow: true,
     memory: "1024",
     cores: "1",
     sshPort: "",
@@ -1127,6 +1128,7 @@ var FORM_FIELDS = [
   { key: "kind", widget: "kind", label: "Kind", hint: "space flips. Disposable: no root, no rebuild. Permanent: boots with the host, one line in apps.nix", create: true },
   { key: "name", widget: "text", label: "Name", hint: "Required", create: true },
   { key: "template", widget: "template", label: "Template", hint: "↓ picks from the list" },
+  { key: "startNow", widget: "bool", label: "Start it now", disposable: true, create: true },
   { key: "autostart", widget: "bool", label: "Start at boot", permanent: true },
   { key: "memory", widget: "text", label: "Memory (MiB)", hint: "256 to 131072", permanent: true },
   { key: "cores", widget: "text", label: "Cores", hint: "1 to 64", permanent: true },
@@ -1144,10 +1146,18 @@ function visibleFields(form, state) {
     var field = FORM_FIELDS[i]
     if (field.create && f.editing === true) continue
     if (field.permanent && f.kind !== "permanent") continue
+    if (field.disposable && f.kind === "permanent") continue
     if (field.agent && !(state && state.agent && state.aiAssist !== false)) continue
     out.push(field)
   }
   return out
+}
+
+// The name of the disposable VM to start once its create succeeds, or "".
+function startAfterCreate(form) {
+  var f = form || {}
+  if (f.kind !== "disposable" || f.editing === true || f.startNow === false) return ""
+  return trim(f.name)
 }
 
 // Where the cursor lands to show the first error: in field order.

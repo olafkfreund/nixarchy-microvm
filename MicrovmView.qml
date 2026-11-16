@@ -197,9 +197,9 @@ FocusScope {
   // threw every field away and showed a busy notice instead. The footer already
   // says why, in both the form and the review.
   function submitForm(form) {
-    if (!MicrovmState.submit(form)) return
+    if (!MicrovmState.submit(form, root.surface)) return
     root.reviewForm = null
-    setMode("list")
+    setMode(Model.startAfterCreate(form) ? "log" : "list")
   }
 
   // o: back to whatever the last build printed. Nothing to show until a
