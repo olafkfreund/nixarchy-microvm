@@ -211,6 +211,15 @@ test("serviceEnableHeals: today's reply no, the usage nixarchy#843 asks for yes 
   eq(Model.serviceHelpArgv(), ["nixarchy-service-enable", "--help"])
 })
 
+test("offerApply: only a written permanent machine", () => {
+  ok(Model.offerApply("creating", "permanent:p1", false))
+  ok(Model.offerApply("editing", "permanent:p1", false))
+  ok(!Model.offerApply("creating", "permanent:p1", true))
+  ok(!Model.offerApply("deleting", "permanent:p1", false))
+  ok(!Model.offerApply("creating", "disposable:t1", false))
+  ok(!Model.offerApply("", "", false))
+})
+
 test("permanentBlocked: a new permanent VM waits for the services row (#6)", () => {
   const HOME = "/home/user"
   const p = Object.assign(Model.emptyForm("permanent"), { name: "p9" })

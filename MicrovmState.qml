@@ -309,6 +309,7 @@ Singleton {
 
   // A submitted form: create (one or two commands) or edit (one).
   property string submitOwner: ""
+  signal permanentWritten(string name, string owner)
 
   function submit(form, owner) {
     if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
@@ -827,6 +828,8 @@ Singleton {
         })
         return
       }
+      if (Model.offerApply(root.pendingVerb, root.pendingKey, failed))
+        root.permanentWritten(Model.pendingName(root.pendingKey), root.submitOwner)
       root.next = null
       root.pendingVerb = ""
       root.pendingKey = ""

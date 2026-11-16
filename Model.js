@@ -1532,6 +1532,11 @@ function removeWaitStep(wait, listOk, listGen, stopped, now) {
   return "wait"
 }
 
+// Ask "Apply now?" only after a permanent machine was written.
+function offerApply(verb, key, failed) {
+  return !failed && (verb === "creating" || verb === "editing") && String(key || "").indexOf("permanent:") === 0
+}
+
 function removeMessage(row, stateDir) {
   if (!row) return ""
   if (row.kind === "disposable") {

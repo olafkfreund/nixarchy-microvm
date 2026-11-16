@@ -58,6 +58,16 @@ FocusScope {
   property string confirmMessage: ""
   property string confirmLabel: "Delete"
   property bool confirmOpen: false
+  // Bound by the host: only the surface that is showing may ask.
+  property bool opened: false
+
+  Connections {
+    target: MicrovmState
+    function onPermanentWritten(name, owner) {
+      if (root.opened && owner === root.surface && !root.confirmOpen)
+        root.ask(function() { root.apply() }, "Apply now? nixarchy-apply rebuilds the whole system from apps.nix, in a terminal.", "Apply")
+    }
+  }
   property bool helpOpen: false
 
   property int cursorIndex: 0

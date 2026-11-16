@@ -140,6 +140,7 @@ Item {
           id: view
           anchors.fill: parent
           surface: "menu"
+          opened: root.opened
           large: true
           foreground: Commons.Color.foreground
           fontFamily: Style.font.family

@@ -117,6 +117,7 @@ Panel {
       id: view
       anchors.fill: parent
       surface: "bar"
+      opened: root.opened
       foreground: root.foreground
       fontFamily: root.fontFamily
       onCloseRequested: root.close()
