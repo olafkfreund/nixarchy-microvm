@@ -918,6 +918,7 @@ function emptyForm(kind) {
     startNow: true,
     memory: "1024",
     cores: "1",
+    advanced: false,
     sshPort: "",
     sshKey: "",
     shares: ""
@@ -937,6 +938,7 @@ function formFromRow(row) {
     f.sshPort = String(row.sshPort || "")
     f.sshKey = String(row.sshKey || "")
     f.shares = String(row.shares || "")
+    f.advanced = !!(f.sshPort || f.sshKey || f.shares)
   }
   return f
 }
@@ -1132,9 +1134,10 @@ var FORM_FIELDS = [
   { key: "autostart", widget: "bool", label: "Start at boot", permanent: true },
   { key: "memory", widget: "text", label: "Memory (MiB)", hint: "256 to 131072", permanent: true },
   { key: "cores", widget: "text", label: "Cores", hint: "1 to 64", permanent: true },
-  { key: "sshPort", widget: "text", label: "SSH port on the host", hint: "Empty means console only. 1024 to 65535", permanent: true },
-  { key: "sshKey", widget: "key", label: "SSH public key", hint: "↓ picks one from ~/.ssh; needed to log in over the port", permanent: true },
-  { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true }
+  { key: "advanced", widget: "bool", label: "SSH and shares", permanent: true },
+  { key: "sshPort", widget: "text", label: "SSH port on the host", hint: "Empty means console only. 1024 to 65535", permanent: true, advanced: true },
+  { key: "sshKey", widget: "key", label: "SSH public key", hint: "↓ picks one from ~/.ssh; needed to log in over the port", permanent: true, advanced: true },
+  { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true, advanced: true }
 ]
 
 // `state` is {agent, aiAssist}: the describe field exists only when the
@@ -1147,6 +1150,7 @@ function visibleFields(form, state) {
     if (field.create && f.editing === true) continue
     if (field.permanent && f.kind !== "permanent") continue
     if (field.disposable && f.kind === "permanent") continue
+    if (field.advanced && f.advanced !== true) continue
     if (field.agent && !(state && state.agent && state.aiAssist !== false)) continue
     out.push(field)
   }
@@ -1696,7 +1700,7 @@ function applyAgentReply(reply, form) {
       f[key] = String(v)
     } else if (type === "port") {
       if (v === null) f.sshPort = ""
-      else if (typeof v === "number" && v === Math.floor(v)) f.sshPort = String(v)
+      else if (typeof v === "number" && v === Math.floor(v)) { f.sshPort = String(v); f.advanced = true }
       else rejected.push(key)
     } else if (type === "boolean") {
       if (typeof v !== "boolean") { rejected.push(key); continue }
@@ -1711,7 +1715,7 @@ function applyAgentReply(reply, form) {
         pairs.push(sanitize(s.source, 4096) + ":" + sanitize(s.mountPoint, 4096))
       }
       if (bad) rejected.push(key)
-      else f.shares = pairs.join(" ")
+      else { f.shares = pairs.join(" "); if (pairs.length > 0) f.advanced = true }
     }
   }
   return { form: f, reasoning: reasoning, rejected: rejected }

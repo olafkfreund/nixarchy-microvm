@@ -162,6 +162,8 @@ FocusScope {
   function submit() {
     root.attempted = true
     if (!root.check.ok) {
+      var e = root.check.errors
+      if (!root.form.advanced && (e.sshPort || e.sshKey || e.shares)) root.setValue("advanced", true)
       var at = Model.firstErrorIndex(root.fields, root.check.errors)
       if (at !== -1) root.fieldIndex = at
       Qt.callLater(root.focusCurrent)
