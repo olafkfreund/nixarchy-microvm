@@ -150,6 +150,10 @@ FocusScope {
 
   // c, IPC create, or the menu's {"create":true}.
   function openForm(kind) {
+    if (!MicrovmState.featureState.upstreamOk) {
+      MicrovmState.lastError = MicrovmState.upstreamError || "checking nixarchy…"
+      return
+    }
     root.mode = "form"
     root.agentNotice = ""
     root.helpOpen = false
@@ -235,7 +239,6 @@ FocusScope {
     var row = Model.rowByKey(MicrovmState.allRows, key)
     if (!row) return
     if (verb === "console") { if (MicrovmState.console_(row)) root.closeRequested(); return }
-    if (verb === "startTerminal") { if (MicrovmState.startTerminal(row)) root.closeRequested(); return }
     if (verb === "logs") { if (MicrovmState.logs(row)) root.closeRequested(); return }
     if (verb === "copy") { MicrovmState.copyName(row.name); return }
     if (verb === "remove") { askRemove(row); return }
@@ -407,7 +410,7 @@ FocusScope {
 
         PanelHero {
           title: "MicroVMs"
-          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError)
+          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError, MicrovmState.upstreamError)
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconOpacity: MicrovmState.counts.running > 0 ? 1.0 : 0.5
@@ -686,6 +689,7 @@ FocusScope {
               everLoaded: MicrovmState.everLoaded,
               reachable: MicrovmState.reachable,
               listError: MicrovmState.listError,
+              upstreamError: MicrovmState.upstreamError,
               filtered: MicrovmState.rows.length > 0,
               showStopped: MicrovmState.showStopped
             })
@@ -761,19 +765,19 @@ FocusScope {
           }
         }
 
-        // The stream, a queued apply, a terminal notice, or why a key is
+        // The stream, a queued apply, or why a key is
         // missing for the row under the cursor. One line, the first that
         // has something to say.
         Text {
           width: parent.width
           visible: text !== "" && MicrovmState.lastError === "" && root.mode === "list"
           text: {
+            if (!root.features.upstreamOk) return MicrovmState.upstreamError || "checking nixarchy…"
             if (root.agentNotice !== "") return root.agentNotice
             if (MicrovmState.streaming) return MicrovmState.streamTitle + " …   o to watch"
             if (MicrovmState.streamExit >= 0) {
               return MicrovmState.streamTitle + (MicrovmState.streamExit === 0 ? " finished" : " failed") + "   o shows the log"
             }
-            if (MicrovmState.notice !== "") return MicrovmState.notice
             if (root.cursorActive && root.hintText !== "" && root.cursorRow && root.cursorRow.pending)
               return root.hintText + "   a applies"
             if (root.listActions.apply) return "queued for the next rebuild · a applies now (nixarchy-apply, in a terminal)"

@@ -88,7 +88,7 @@ Panel {
     active: MicrovmState.counts.running > 0 || MicrovmState.mutating
     useActiveColor: true
     activeColor: MicrovmState.counts.failing > 0 ? Commons.Color.urgent : Commons.Color.accent
-    tooltipText: "MicroVMs · " + Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError)
+    tooltipText: "MicroVMs · " + Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError, MicrovmState.upstreamError)
 
     onPressed: function(b) {
       if (b === Qt.MiddleButton) MicrovmState.refresh()

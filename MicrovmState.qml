@@ -56,11 +56,19 @@ Singleton {
   //
   // Detected, never assumed. Probed once per open (and once for the bar).
 
-  property bool vmJson: false
-  property var features: ({ vmDetach: false, vmConsole: false, vmSetTemplate: false })
+  // Every action waits for both probes; one verdict says what to update.
+  property bool helpDone: false
+  property bool optDone: false
+  property bool pkgDone: false
+  property string helpText: ""
+  property string optReply: ""
+  property bool listTooOld: false
   // nixarchy.pkg's adapter, or "" when that plugin is not installed.
   property string pkgScript: ""
-  property bool optReplace: false
+  readonly property bool upstreamReady: helpDone && pkgDone && (optDone || !pkgScript)
+  readonly property string upstreamError: listTooOld
+    ? Model.upstreamVerdict("", "", false)   // the nixarchy#762 message: list --json came with it
+    : (upstreamReady ? Model.upstreamVerdict(helpText, optReply, !!pkgScript) : "")
   // services.nix has the microvm row (null until read), or
   // nixarchy-service-enable adds a missing one itself (nixarchy#843). #6.
   property var servicesRow: null
@@ -73,11 +81,9 @@ Singleton {
 
   readonly property var featureState: ({
     mutating: root.mutating,
-    vmDetach: root.features.vmDetach === true,
-    vmConsole: root.features.vmConsole === true,
-    vmSetTemplate: root.features.vmSetTemplate === true,
+    upstreamOk: root.upstreamReady && root.upstreamError === "",
+    upstreamError: root.upstreamError,
     pkgScript: root.pkgScript,
-    optReplace: root.optReplace,
     agent: root.agent,
     aiAssist: root.aiAssist,
     schemaLoaded: root.schemaText !== "",
@@ -238,6 +244,7 @@ Singleton {
   // Every mutation comes through here. Refuses, with a reason, while anything
   // else mutates; the argv is null when an input failed validation.
   function run(argvs, verb, key) {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     if (root.mutating) { root.lastError = root.busyText(); return false }
     if (!argvs || argvs.length === 0) return false
     for (var i = 0; i < argvs.length; i++) if (!argvs[i]) return false
@@ -282,6 +289,7 @@ Singleton {
 
   // A submitted form: create (one or two commands) or edit (one).
   function submit(form) {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     var argvs = Model.submitArgvs(form, root.allRows, root.templates, root.home, root.featureState)
     if (!argvs) { root.lastError = Model.permanentBlocked(form, root.featureState) || "Nothing was written: the form or a needed feature is missing"; return false }
     return run(argvs, form.editing ? "editing" : "creating", Model.rowKey(form.kind, form.name))
@@ -360,10 +368,6 @@ Singleton {
   //
   // Terminals. None of these is tracked: the terminal owns the process.
 
-  // Said once per session, the first time a VM is started in a terminal.
-  property string notice: ""
-  property bool terminalNoticeShown: false
-
   function detach(argv) {
     if (!argv) return false
     Quickshell.execDetached(argv)
@@ -375,21 +379,12 @@ Singleton {
     return detach(row.kind === "permanent" ? Model.sshArgv(row.sshPort, row.sshKey, root.sshKeys, root.home) : Model.consoleArgv(row.name))
   }
 
-  // "Start in terminal": today's `nixarchy vm run`, held by that terminal.
-  function startTerminal(row) {
-    if (!allowed(row, "startTerminal")) return false
-    if (!root.terminalNoticeShown) {
-      root.terminalNoticeShown = true
-      root.notice = "started in a terminal: it builds and boots there, and closing that terminal stops the VM"
-    }
-    return detach(Model.runTerminalArgv(row.name))
-  }
-
   function logs(row) {
     return !!Model.actionFor(row, root.featureState, "logs") && detach(Model.logsArgv(row.name))
   }
 
   function apply() {
+    if (!root.featureState.upstreamOk) { root.lastError = root.upstreamError || "checking nixarchy…"; return false }
     return detach(Model.applyTerminalArgv())
   }
 
@@ -488,10 +483,8 @@ Singleton {
       streaming: root.streaming,
       stream: root.streamTitle,
       thinking: root.thinking,
-      vmJson: root.vmJson,
-      features: root.features,
+      upstreamError: root.upstreamError,
       pkgScript: root.pkgScript,
-      optReplace: root.optReplace,
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
@@ -533,8 +526,8 @@ Singleton {
       root.vmsStale = false
       root.listError = ""
       root.reachable = true
-      root.vmJson = Model.isJsonList(listOut.text)
-      root.vms = Model.parseVmList(listOut.text)
+      root.listTooOld = Model.isTooOldList(listOut.text)
+      root.vms = root.listTooOld ? [] : Model.parseVmList(listOut.text)
     }
   }
 
@@ -574,20 +567,19 @@ Singleton {
     id: helpProcess
     stdout: StdioCollector { id: helpOut; waitForEnd: true }
     stderr: StdioCollector { id: helpErr; waitForEnd: true }
-    // Some tools print usage on stderr. Reading stdout alone would have made
-    // all three features silently false and removed three keys with no reason
-    // given, indistinguishable from an old nixarchy.
+    // Some tools print usage on stderr: read both.
     onExited: function(code) {
       var text = Model.trim(helpOut.text + "\n" + helpErr.text)
-      if (text) { root.features = Model.detectFeatures(text); root.helpStale = false }
+      if (text) { root.helpText = text; root.helpStale = false }
       else root.helpStale = true
+      root.helpDone = true
     }
   }
 
   Process {
     id: optProbe
     stdout: StdioCollector { id: optOut; waitForEnd: true }
-    onExited: function(code) { root.optReplace = Model.optReplaceSupported(optOut.text) }
+    onExited: function(code) { root.optReply = optOut.text; root.optDone = true }
   }
 
   // Today --help is taken as a service id: it only greps and complains, on
@@ -622,12 +614,15 @@ Singleton {
     printErrors: false
     onLoaded: {
       root.pkgScript = path
+      root.pkgDone = true
+      root.optDone = false
+      root.optReply = ""
       if (!optProbe.running) {
         optProbe.command = Model.optProbeArgv(path)
         optProbe.running = true
       }
     }
-    onLoadFailed: { root.pkgScript = ""; root.optReplace = false }
+    onLoadFailed: { root.pkgScript = ""; root.optReply = ""; root.pkgDone = true }
   }
 
   // The permanent machines this plugin may edit, straight from the file
