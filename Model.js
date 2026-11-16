@@ -51,6 +51,7 @@ var SHORTCUTS = [
 
   { group: "Panel", keys: "o", text: "Show the build log" },
   { group: "Panel", keys: "u", text: "Refresh now" },
+  { group: "Panel", keys: "v", text: "Switch between the list and the overview" },
   { group: "Panel", keys: "tab", text: "Switch to the next bar panel" },
   { group: "Panel", keys: "shift+tab", text: "Switch to the previous bar panel" },
   { group: "Panel", keys: "X", text: "Give up on a change stuck over a minute" },

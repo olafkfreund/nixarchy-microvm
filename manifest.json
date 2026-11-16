@@ -17,7 +17,7 @@
   },
   "barWidget": {
     "displayName": "MicroVMs",
-    "description": "Your MicroVMs, running ones first, disposable and permanent side by side. Driven from the keyboard: enter or e opens the console, s starts or stops, r restarts, l follows the logs, m edits, x deletes, c creates, i describes one to the default agent, a applies queued changes, y copies the name, / filters, u refreshes, o shows the running log, and ? lists the lot inside the panel.",
+    "description": "Your MicroVMs, running ones first, disposable and permanent side by side. Driven from the keyboard: enter or e opens the console, s starts or stops, r restarts, l follows the logs, m edits, x deletes, c creates, i describes one to the default agent, a applies queued changes, y copies the name, / filters, u refreshes, o shows the running log, v switches to the overview, and ? lists the lot inside the panel.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "right",
@@ -25,7 +25,8 @@
       "refreshIntervalSec": 30,
       "showStopped": true,
       "hideWhenEmpty": false,
-      "aiAssist": true
+      "aiAssist": true,
+      "overviewByDefault": false
     },
     "schema": [
       {
@@ -58,6 +59,13 @@
         "label": "AI assist in the create form",
         "description": "Off hides the describe field and the i key, even when the default agent supports it. The agent only ever proposes form values; it runs nothing.",
         "defaultValue": true
+      },
+      {
+        "key": "overviewByDefault",
+        "type": "boolean",
+        "label": "Open on the overview",
+        "description": "Show VMs as cards with live memory, CPU and uptime when the panel opens. v switches either way.",
+        "defaultValue": false
       }
     ]
   },

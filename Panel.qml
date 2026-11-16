@@ -20,6 +20,7 @@ Panel {
   readonly property bool showStopped: setting("showStopped", true) === true
   readonly property bool hideWhenEmpty: setting("hideWhenEmpty", false) === true
   readonly property bool aiAssist: setting("aiAssist", true) === true
+  readonly property bool overviewByDefault: setting("overviewByDefault", false) === true
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -29,7 +30,8 @@ Panel {
       refreshIntervalSec: root.refreshIntervalSec,
       showStopped: root.showStopped,
       hideWhenEmpty: root.hideWhenEmpty,
-      aiAssist: root.aiAssist
+      aiAssist: root.aiAssist,
+      overviewByDefault: root.overviewByDefault
     }
   }
 
@@ -37,6 +39,7 @@ Panel {
   onShowStoppedChanged: pushSettings()
   onHideWhenEmptyChanged: pushSettings()
   onAiAssistChanged: pushSettings()
+  onOverviewByDefaultChanged: pushSettings()
 
   Component.onCompleted: {
     pushSettings()
