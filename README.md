@@ -82,7 +82,7 @@ was, on whichever row moves up into the slot.
 | `j` `k` `↑` `↓` | Move the cursor down / up |
 | `/` | Jump into the filter box |
 | `k` `↑` | From the first row, step back up into the filter |
-| `enter` `e` | Open the console in a terminal (permanent: SSH, needs a port and a key) |
+| `enter` `e` | Open the console in a terminal (permanent: SSH, needs a port and a key, not while a change waits for apply) |
 | `s` | Start it or stop it |
 | `r` | Restart it (permanent) |
 | `l` | Follow its journal in a terminal (permanent) |
@@ -122,6 +122,7 @@ stops the VM.
 | `space` | Flip a switch or the kind |
 | `j` `k` | Move between fields; on a text field they type, so use `tab` |
 | `enter` | Create, or review a permanent VM's line |
+| `j` `k` `↑` `↓` | In the review: scroll the line |
 | `enter` on Describe | Ask the agent; `esc` cancels the call |
 | `esc` | Cancel |
 
