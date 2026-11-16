@@ -518,6 +518,8 @@ FocusScope {
           // still Tabs through it and presses Enter.
           Connections {
             target: MicrovmState
+            // The other surface's call has ended, so its notice no longer holds.
+            function onThinkingChanged() { if (!MicrovmState.thinking) root.agentNotice = "" }
             function onAgentFormChanged() {
               if (!MicrovmState.agentForm || root.mode !== "form" || MicrovmState.agentOwner !== root.surface) return
               var got = Model.applyAgentReply(MicrovmState.agentForm, createForm.form)
@@ -570,6 +572,7 @@ FocusScope {
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.body
                 font.bold: true
+                wrapMode: Text.WrapAnywhere
               }
 
               Text {
@@ -579,6 +582,7 @@ FocusScope {
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
               }
 
               Text {

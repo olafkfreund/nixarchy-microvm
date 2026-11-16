@@ -975,7 +975,11 @@ function validateForm(form, rows, templates, hostHome) {
     errors.name = kind === "permanent"
       ? "Lower-case letters, digits and -, starting with a letter, at most 32"
       : "Letters, digits, _ and -, starting with a letter, at most 64"
-  } else if (f.editing !== true && rowByName(rows, kind, name)) errors.name = "A " + kind + " VM called " + name + " already exists"
+  } else if (f.editing !== true) {
+    // A machine removed but not yet applied has no line, so its name is free again.
+    var existing = rowByName(rows, kind, name)
+    if (existing && existing.ownership !== "removed") errors.name = "A " + kind + " VM called " + name + " already exists"
+  }
 
   if (!isTemplate(trim(f.template), templates)) errors.template = "Pick a template from the list"
 

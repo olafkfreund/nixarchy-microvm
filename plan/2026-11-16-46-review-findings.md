@@ -476,3 +476,24 @@ in their findings. The note `(review)` marks a change that came from them.
 - Before merge, drop the branch. After merge, revert the merge commit.
 - Nothing outside the plugin changes, except the test line `p1`, which
   teardown removes.
+
+## Deviations and review fixes, recorded during implementation
+
+- **Step 7:** `MicrovmState.qml` also keeps `appsText`, the last text read
+  from `apps.nix`. It is how "the file's text changed" is detected, and it
+  bumps `appsGen` only on a real change.
+- **Final review (Opus and Codex; agy's review timed out and was not
+  obtained).** Four findings were confirmed in the code and fixed in one
+  commit:
+  1. **The B3/B4 row kept a removed name taken.** `validateForm`'s
+     duplicate check skips a row whose ownership is `"removed"`, so a new VM
+     can reuse the name before apply. A test was added.
+  2. **B9: a finished call could still be cleared by the other surface.**
+     `resetAgent(owner)` now returns whenever another surface owns the call,
+     whether it is running or finished. This completes the spec's "error
+     scoped to the owner".
+  3. **B7: two review lines did not wrap.** The summary
+     (`WrapAnywhere`) and the destination line (`WordWrap`) now wrap, so the
+     clipped `Flickable` cannot cut them off.
+  4. **B9: `agentNotice` outlived the call it described.** It is cleared
+     when `MicrovmState.thinking` turns false.

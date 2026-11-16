@@ -314,3 +314,9 @@ test("keysMatching filters by file or key, and takes a sequence wrapper (B1 clea
   eq(Model.keysMatching({ length: 1, 0: keys[0] }, "").length, 1)
   eq(Model.keysMatching(null, "x").length, 0)
 })
+
+test("a permanent VM removed but not yet applied frees its name for a new one (review)", () => {
+  const removed = Model.permanentRows([], [], { machines: { p5: "removed" } })
+  eq(Model.validateForm(form({ name: "p5" }), removed, TEMPLATES, HOME).errors.name, undefined)
+  ok(errors({ name: "p1" }).name) // a VM that still has its line keeps its name
+})

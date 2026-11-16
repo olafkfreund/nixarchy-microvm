@@ -453,7 +453,8 @@ Singleton {
   // left or a surface is dismissed — never from reset(), which must not touch
   // the stream or the log.
   function resetAgent(owner) {
-    if (root.agentBusyFor(owner)) return
+    // Another surface's call, running or finished, is not this surface's to clear.
+    if (root.agentOwner !== "" && root.agentOwner !== owner) return
     agentTimer.stop()
     if (agentProcess.running) {
       root.agentEnded = "closed"
