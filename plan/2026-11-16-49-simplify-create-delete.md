@@ -1,5 +1,5 @@
 ---
-status: approved
+status: draft
 issue: 49
 spec: spec/2026-11-16-49-simplify-create-delete.md
 coders:
@@ -25,6 +25,92 @@ The branch is then rebased onto `main`; its line numbers below are on
 
 Each step is one commit, with a subject citing the step, for example
 `feat: upstream verdict (#49, step 1)`.
+
+## Revision after approval (Codex plan review, 2026-11-16)
+
+The owner approved the first draft. Codex's plan review then found three
+blockers and four gaps, all confirmed in the code. They are fixed below, and
+the plan needs re-approval:
+
+1. **Chained actions refused themselves.** `next` was set before `run()`,
+   whose busy check (`MicrovmState.qml:241`) then saw the lock. `run()` now
+   takes the next step as an argument and installs it after its own check
+   (steps 3–5).
+2. **The 90 s limit was only checked on a list result.** A hung stop or list
+   would wait forever. A separate deadline timer now enforces it (step 5).
+3. **The create's output never reached the log.** `startStream` resets the
+   log (`:296`), and `actionProcess` output is never appended. The create
+   now writes the log, and the stream appends to it (steps 3–4).
+4. **Global actions were not gated.** `listActions` (`Model.js:1470`) offered
+   create, assist and apply before readiness. They are gated now, including
+   `MicrovmState.apply()` (step 1–2).
+5. **`continueAfter` was tested but not used.** It now drives every
+   transition, and QML only executes what it returns (step 3).
+6. **The polling check was wrong with a bar widget installed.** The bar
+   widget keeps a slow poll (`MicrovmState.qml:42`, allowed by AGENTS.md). The
+   check is corrected (Final verification).
+
+### Further corrections from agy's plan review
+
+These were each confirmed in the code. **Where they differ from the step
+text below, they win.**
+
+7. **Readiness must wait for the package check.**
+   - `pkgScript` starts as `""`, so `optDone || !pkgScript` was true before
+     `pkgFile` had loaded.
+   - Add `pkgDone`: true once `pkgFile` loads or fails.
+   - `upstreamReady` is `helpDone && pkgDone && (optDone || !pkgScript)`.
+   - A `pkgFile` reload resets `optDone` and `optReply`.
+8. **Declare `listTooOld`.** It is a `property bool listTooOld: false`, and
+   it feeds `upstreamError` (the nixarchy message) alongside the verdict.
+9. **Priority.**
+   - `summaryText` and `emptyText` keep `!everLoaded`, `!reachable` and
+     `filtered` first.
+   - `upstreamError` ranks just above `listError`, as the spec says, not
+     above everything.
+   - The callers are `MicrovmView.qml:410` (`summaryText`), `:685`
+     (`emptyText`) and `Panel.qml:91`.
+10. **Show the reason with no row selected.** The hint line in
+    `MicrovmView.qml` (`:768-781`) shows `"checking nixarchy…"` or
+    `upstreamError` when `!featureState.upstreamOk`, ahead of the other
+    branches. `hiddenReason` only reaches the footer when a cursor row
+    exists.
+11. **`X` during a multi-step action.**
+    - `launch()` (`:228-230`) and `actionProcess.onExited` (`:700-701`)
+      reset `escapable` and stop `escapeTimer` only when `next === null`.
+      The 60 s timer starts in `run()`.
+    - `abandon()` with `next !== null` and no process running also clears
+      `pendingVerb`, `pendingKey`, `escapable` and `escapeTimer`.
+12. **`next` has a terminal marker.**
+    - When `advance()` launches a `stream` or `rm` step, it sets
+      `next = {kind: "last", name}`.
+    - That keeps the lock, and tells `onExited` (via `continueAfter`) that
+      this exit ends the action: `done`, and nothing re-runs.
+    - Every place that clears `pendingVerb` also clears `pendingKey`.
+13. **Wait-loop details.**
+    - A failing re-send clears `next.resending` and restarts `waitTimer`.
+    - `afterGen` is recorded when the `stop` *exits*, not when `run()`
+      starts.
+    - A list result counts only if its generation is greater.
+    - `removeWaitStep` checks `timeout` before `resend`.
+14. **Test fixtures that change.**
+    - In step 1, the `ALL` and `NONE` states, and any test passing `{}`, need
+      `upstreamOk: true`: `tests/model/commands.test.js:86-93`, `:129`,
+      `:157`; `tests/model/rows.test.js:52`.
+    - In step 7, three tests change, each named in the commit:
+      - `tests/model/agent.test.js:82` compares `advanced`;
+      - `tests/model/form.test.js:278` must not become `-1 === -1`;
+      - `applyAgentReply` must ignore `{sshPort: null, shares: []}` when it
+        sets `advanced` (`agent.test.js:74`).
+15. **`CreateForm.start(kind, field)`** sets `fieldIndex` *after* `begin()`
+    (`CreateForm.qml:103`), or `begin()` resets it.
+16. **Step 9's scope also includes:**
+    - `Model.SHORTCUTS` (`Model.js:45-49`), for `c` and `i`;
+    - `docs/usage.md:20`, `:176-179`, `:222-223`, `:304-307`, `:340-351`;
+    - `docs/index.md:157-162`.
+
+    Because step 9 edits `Model.js` (the agent prompt), its check is
+    `node tests/run.js && nix flake check`.
 
 ## Approved decisions, carried over from the spec
 
@@ -113,6 +199,9 @@ Each step is one commit, with a subject citing the step, for example
    - **Delete `runTerminalArgv`** (`:1295`).
    - **`submitArgvs` (`:1371`):** return `null` when `!s.upstreamOk`, and
      drop the `optReplace` and `vmSetTemplate` conditions.
+   - **`listActions` (`:1470`):** `create`, `assist` and `apply` are all false
+     when `!s.upstreamOk`, so every global action is absent until the verdict
+     is in (revision item 4). Tests cover it.
    - **`summaryText` (`:685`) and `emptyText` (`:699`):** `upstreamError`
      comes first. Add a parameter or a state field, and update the callers in
      step 2.
@@ -144,8 +233,8 @@ Each step is one commit, with a subject citing the step, for example
        `Model.isTooOldList(listOut.text)`: set `listTooOld = true` and
        `vms = []`, and skip parsing. On JSON, set `listTooOld = false`.
        `upstreamError` also reports when `listTooOld`.
-     - **Gates.** `run()` (`:240`) and `submit()` (`:284`) refuse with
-       `lastError = upstreamError || "checking nixarchy…"` when not ok.
+     - **Gates.** `run()` (`:240`), `submit()` (`:284`) and `apply()` refuse
+       with `lastError = upstreamError || "checking nixarchy…"` when not ok.
      - **Remove `startTerminal`** (`:379-386`), the start-terminal notice
        (`:364-365`), and the `statusJson` fields for the removed flags
        (`:491-494`). Add `upstreamError`.
@@ -161,34 +250,49 @@ Each step is one commit, with a subject citing the step, for example
    - **`VmList.qml:130-131`:** remove the `startTerminal` tooltip branch.
    - → `node tests/run.js && nix build && nix flake check`
 
-3. **The continuation (`MicrovmState.qml`).**
-   - **The lock.**
-     - Add `property var next: null`.
-     - `mutating` (`:152`) adds `|| next !== null`.
-   - **Internal entry points.**
-     - `beginStream(argv, title)`: the body of `startStream` (`:290`) without
-       the busy check. `startStream` calls it after its check.
-     - `advance()`: reads `next` and launches its step (`stream` →
-       `beginStream(Model.runDetachArgv(name), "run " + name)`; `rm` →
-       `launch(actionProcess, Model.rmVmArgv(name))`; `wait` → start
-       `waitTimer`). It launches before setting or clearing `next`.
+3. **The continuation (`MicrovmState.qml`, `Model.js`).**
+   - **`Model.js`: `continueAfter(next, event)` decides every transition.**
+     - `event` is `{ type: "exit", ok, phase }` for the end of a process, or
+       `{ type: "tick", listOk, listGen, stopped, now }` for the wait timer.
+     - It returns one action: `{ do: "stream", name }`, `{ do: "rm", name }`,
+       `{ do: "stop", name }` (the one re-send), `{ do: "wait" }`,
+       `{ do: "done" }` or `{ do: "fail", message }`, plus the `next` value
+       to hold afterwards.
+     - It uses `removeWaitStep` (step 5) for ticks.
+     - QML only executes the action it returns (revision item 5).
+     - Tests cover every `kind` × `event`, including a failure at each phase.
+   - **The lock.** `property var next: null`; `mutating` (`:152`) adds
+     `|| next !== null`.
+   - **`run(argvs, verb, key, nextStep)` (`:240`).**
+     - The busy and upstream checks run *first*, against the current lock.
+     - Only then: `root.next = nextStep || null`, `pendingVerb`/`pendingKey`
+       are set, and the first command launches.
+     - Callers never set `next` themselves (revision item 1).
+   - **`beginStream(argv, title, keepLog)`.** It is the body of
+     `startStream` (`:290`) without the busy check.
+     - `keepLog` true appends `"$ " + title` to the existing log instead of
+       resetting it (revision item 3).
+     - `startStream` calls `beginStream(argv, title, false)` after its
+       check.
    - **`actionProcess.onExited` (`:679-720`).**
-     - On success with an empty queue and `next !== null`, keep `pendingVerb`
-       and `pendingKey`, and `Qt.callLater(root.advance)`.
-     - On failure, set `next = null`, as part of the existing failure path.
-   - **The stream.** `streamProcess.onExited` clears `next`, if it was the
-     stream step, and `pendingVerb`.
+     - It calls `continueAfter(next, {type: "exit", ok, phase})`.
+     - For `stream`, `rm` or `stop`, it keeps `pendingVerb` and `pendingKey`
+       and launches through `Qt.callLater`, launching before it sets `next`
+       to the returned value.
+     - For `fail`, it clears `next` and runs the existing failure path.
+     - For `done`, it clears `next` and `pendingVerb`.
+   - **`streamProcess.onExited`** treats the stream as the last phase: it
+     clears `next` and `pendingVerb`.
    - **Abandon.**
-     - `escapable` is set by a timer started at `run()` / `submit()` /
-       `remove()`. It is not restarted per process.
-     - `abandon()` (`:337`): when `next !== null`, clear it, stop
-       `waitTimer`, set "gave up waiting for <name>; nothing was deleted" if
-       it was a `wait` or `rm` step, then signal any running process as
-       today.
-   - **`Model.js`:** `continueAfter(next, ok)`, which returns the step to run
-     (or `null`). It has tests for each `kind`, and for a failure.
+     - `escapable` is set by a 60 s timer started in `run()`, not restarted
+       per process.
+     - `abandon()` (`:337`): when `next !== null`, it stops `waitTimer` and
+       `deadlineTimer`, sets `next = null` and the message "gave up waiting
+       for <name>; nothing was deleted" for a `wait` or `rm`, then signals
+       any running process as today.
+     - The lock drops only when that process has exited.
    - → `node tests/run.js && nix build`
-   - Traps: launch-before-clear; never call `startStream` from inside
+   - Traps: launch before you clear; never call `startStream` from inside
      `onExited`.
 
 4. **Create and start.**
@@ -202,8 +306,16 @@ Each step is one commit, with a subject citing the step, for example
        `kind === "disposable" && !editing && startNow !== false`, else `""`.
        It has tests.
    - **`MicrovmState.submit(form, owner)`** (`:284`): when
-     `startAfterCreate(form)` names the VM, set `next = {kind: "stream",
-     name}` before `run(...)`. Record `submitOwner = owner`.
+     `startAfterCreate(form)` names the VM, call `run(argvs, "creating", key,
+     {kind: "stream", name})`, and record `submitOwner = owner`.
+   - **The create writes the log** (revision item 3).
+     - When `nextStep.kind === "stream"`, `run()` starts the log with
+       `log = ["$ create " + name]`, `streamTitle = "create " + name` and
+       `streamExit = -1`.
+     - `actionProcess.onExited` appends the create's stdout and stderr
+       (`Model.capLog`, `Model.stripAnsi`) before continuing.
+     - The stream then uses `beginStream(..., keepLog: true)`, so the log
+       reads the create, then the build.
    - **`MicrovmView.submitForm`** (`:195`) passes `root.surface`. On success,
      when `Model.startAfterCreate(form)` is set, it calls `setMode("log")`;
      otherwise it calls `setMode("list")`, as today.
@@ -225,17 +337,26 @@ Each step is one commit, with a subject citing the step, for example
    - **`MicrovmState.qml`:**
      - `listGen`, incremented each time `listProcess` *starts*, recorded per
        read, and `lastListOk` for the read that just finished.
-     - `remove(row)` (`:277`), for a running disposable VM:
-       `next = {kind: "wait", name, since: Date.now(), resent: false,
-       afterGen: listGen}`, then `run([Model.stopVmArgv(name)], "deleting",
-       row.key)`.
+     - `remove(row)` (`:277`), for a running disposable VM, calls
+       `run([Model.stopVmArgv(name)], "deleting", row.key, {kind: "wait",
+       name, since: Date.now(), resent: false, afterGen: listGen})`.
+     - **`deadlineTimer`** (90 s, single-shot) starts in `run()` whenever the
+       next step is a `wait`. It is independent of list results (revision
+       item 2). When it fires:
+       - `next = null`, and `lastError` is "<name> did not stop within 90 s;
+         nothing was deleted";
+       - if `actionProcess` is still running (a hung stop), it is signalled
+         as `abandon()` does, through the existing kill timer;
+       - the lock drops only when that process exits;
+       - a hung `listProcess` is left alone: it holds no lock.
      - `waitTimer` (2 s, single-shot), started by `advance()`: refresh the
        list, then on its result call `removeWaitStep`:
        - **`rm`:** `next = {kind: "rm", name}`, then `advance()`;
        - **`resend`:** set `resent`, then launch `stopVmArgv` through
          `actionProcess`. A non-zero exit of this re-send does not fail the
          action: tag it with `next.resending`;
-       - **`timeout`:** `lastError`, `next = null`, clear `pendingVerb`;
+       - **`timeout`:** cannot happen here any more, since `deadlineTimer`
+         owns the limit; `removeWaitStep` keeps it only as a guard;
        - **`wait`:** restart the timer.
      - While a wait is active, the list refresh runs even with every surface
        closed. This is the recorded exception.
@@ -326,9 +447,13 @@ Each step is one commit, with a subject citing the step, for example
 - **Live:** run spec Verification 1–6.
   - Snapshot `apps.nix` and `services.nix` first.
   - Install with the shell stopped, using `t1`, `t2` and `p1`.
-  - In check 2, close the menu during the wait, and check that `polls` in
-    `status` (through the menu's `status()` IPC) stops rising once the delete
-    is done.
+  - In check 2, close the menu during the wait. The delete must still
+    complete. Then check polling with `status` (the menu's `status()` IPC):
+    - **with no bar widget on any bar** (this host): `polls` stops rising
+      once the delete is done;
+    - **with a bar widget:** it falls back to the slow `refreshIntervalSec`
+      rate (`MicrovmState.qml:42`, allowed by AGENTS.md) instead of the 2 s
+      wait rate (revision item 6).
   - Tear down, diff against the snapshots, restore the Home Manager link,
     and check the bar.
 - **Reviews:** Opus, plus Codex and agy (`reviewers:`).
