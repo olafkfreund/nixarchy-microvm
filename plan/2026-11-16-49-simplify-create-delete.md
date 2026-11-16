@@ -492,3 +492,24 @@ text below, they win.**
   `submit()` returns, and `run()` stays free of stream code. `submitOwner`
   is recorded on every successful submit, not only on create-and-start,
   because step 8 needs it for permanent writes.
+- **Final review (Opus, Codex)**, all confirmed in the code and fixed in one
+  commit:
+  1. **A finished delete never finished** (both reviewers; also seen live:
+     `pending` stayed "deleting disposable:t1"). The rm's exit returned
+     `done`, but `advance()` had no `done` branch. A new `finishAction()`
+     clears the pending row, the timers and `escapable`, then refreshes. Both
+     `done` and `fail` use it.
+  2. **The 30 s re-send waited on a list read** (Codex). Each wait tick now
+     also checks the clock alone, so a hung list cannot hold up the re-send.
+     The 90 s limit already had its own timer.
+  3. **`X` during `rm` said "nothing was deleted"** (both). That is only said
+     during the wait now. During `rm` it says "<name>; it may be partly
+     deleted".
+  4. **A failed create left the log open** (both). The log gets its own
+     `── exit N · failed` line, and `streamExit` is set.
+  5. **The stopped check was logic in QML** (Codex). It is now
+     `Model.isStopped`, with tests, plus `continueAfter` tests for "no second
+     re-send" and "a fresh stopped list wins over a re-send".
+  6. **The verdict flickered on every re-probe** (Opus). A `pkgFile` reload
+     of the same path keeps the last verdict, and resets only when the path
+     changes.

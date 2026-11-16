@@ -36,3 +36,20 @@ test("continueAfter tick needs a fresh successful stopped list", () => {
   for (const next of [null, { kind: "stream", name: "d1" }, { kind: "rm", name: "d1" }, { kind: "last", name: "d1" }])
     eq(Model.continueAfter(next, { type: "tick", now: 2000 }), { do: "fail", message: "invalid continuation step", next: null })
 })
+
+test("isStopped: running means not stopped; absent counts as stopped (#49 review)", () => {
+  eq(Model.isStopped([{ name: "t1", running: true }], "t1"), false)
+  eq(Model.isStopped([{ name: "t1", running: false }], "t1"), true)
+  eq(Model.isStopped([{ name: "t2", running: true }], "t1"), true)
+  eq(Model.isStopped({ length: 1, 0: { name: "t1", running: true } }, "t1"), false)
+  eq(Model.isStopped(null, "t1"), true)
+})
+
+test("continueAfter: no second re-send, and a fresh stopped list wins over re-send (#49 review)", () => {
+  const resent = { kind: "wait", name: "d1", since: 0, resent: true, afterGen: 1 }
+  eq(Model.continueAfter(resent, { type: "tick", listOk: false, listGen: 0, stopped: false, now: 40000 }).do, "wait")
+  const fresh = { kind: "wait", name: "d1", since: 0, resent: false, afterGen: 1 }
+  eq(Model.continueAfter(fresh, { type: "tick", listOk: true, listGen: 2, stopped: true, now: 35000 }).do, "rm")
+  // A clock-only tick (no fresh list) still re-sends on time.
+  eq(Model.continueAfter(fresh, { type: "tick", listOk: false, listGen: 0, stopped: false, now: 31000 }).do, "stop")
+})

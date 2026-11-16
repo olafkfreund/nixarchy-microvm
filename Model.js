@@ -1525,6 +1525,14 @@ function continueAfter(next, event) {
   return { do: "fail", message: "invalid continuation step", next: null }
 }
 
+// Whether a list says the VM is down: absent counts as stopped (#49).
+function isStopped(vms, name) {
+  var list = vms || []
+  for (var i = 0; i < list.length; i++)
+    if (list[i] && list[i].name === name && list[i].running === true) return false
+  return true
+}
+
 function removeWaitStep(wait, listOk, listGen, stopped, now) {
   if (now - wait.since >= 90000) return "timeout"
   if (listOk && listGen > wait.afterGen && stopped) return "rm"

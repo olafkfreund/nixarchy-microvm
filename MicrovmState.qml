@@ -347,6 +347,17 @@ Singleton {
     return root.beginStream(argv, title, false)
   }
 
+  // The end of a chained action, success or failure: everything run() set up.
+  function finishAction() {
+    waitTimer.stop()
+    deadlineTimer.stop()
+    root.pendingVerb = ""
+    root.pendingKey = ""
+    root.escapable = false
+    escapeTimer.stop()
+    if (root.active || root.background) root.refresh()
+  }
+
   function advance(decision) {
     if (root.next === null) return
     var step = decision || Model.continueAfter(root.next, { type: "exit", ok: true, phase: "advance" })
@@ -354,26 +365,16 @@ Singleton {
     else if (step.do === "rm") { deadlineTimer.stop(); waitTimer.stop(); root.launch(actionProcess, Model.rmVmArgv(step.name)) }
     else if (step.do === "stop") root.launch(actionProcess, Model.stopVmArgv(step.name))
     else if (step.do === "wait") waitTimer.restart()
-    else if (step.do === "fail") {
-      waitTimer.stop()
-      deadlineTimer.stop()
-      root.lastError = step.message
-      root.pendingVerb = ""
-      root.pendingKey = ""
-      root.escapable = false
-      escapeTimer.stop()
-    }
+    else if (step.do === "fail") { root.lastError = step.message; root.finishAction() }
+    else if (step.do === "done") root.finishAction()
     root.next = step.next
   }
 
   function onListResult() {
     if (!root.next || root.next.kind !== "wait" || actionProcess.running) return
-    var stopped = true
-    for (var i = 0; i < root.vms.length; i++)
-      if (root.vms[i].name === root.next.name && root.vms[i].running) stopped = false
     root.advance(Model.continueAfter(root.next, {
       type: "tick", listOk: root.lastListOk, listGen: root.listReadGen,
-      stopped: stopped, now: Date.now()
+      stopped: Model.isStopped(root.vms, root.next.name), now: Date.now()
     }))
   }
 
@@ -411,7 +412,17 @@ Singleton {
   // says the process is gone, so a release can never race a live opt set.
   Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
   Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
-  Timer { id: waitTimer; interval: 2000; onTriggered: root.refreshList() }
+  // Each tick asks for a fresh list, and also checks the clock on its own, so
+  // the 30 s re-send and the limit never wait on a list read that hangs.
+  Timer {
+    id: waitTimer
+    interval: 2000
+    onTriggered: {
+      root.refreshList()
+      if (root.next && root.next.kind === "wait" && !actionProcess.running)
+        root.advance(Model.continueAfter(root.next, { type: "tick", listOk: false, listGen: 0, stopped: false, now: Date.now() }))
+    }
+  }
   Timer {
     id: deadlineTimer
     interval: 90000
@@ -426,12 +437,16 @@ Singleton {
   function abandon() {
     if (!actionProcess.running && root.next === null) return
     if (root.next !== null) {
-      var waiting = root.next.kind === "wait" || root.next.kind === "rm" || (root.next.kind === "last" && root.pendingVerb === "deleting")
+      // Only before rm starts is it certain that nothing was deleted.
+      var waiting = root.next.kind === "wait"
+      var deleting = root.next.kind === "last" && root.pendingVerb === "deleting"
       var name = root.next.name
       waitTimer.stop()
       deadlineTimer.stop()
       root.next = null
-      root.lastError = waiting ? "gave up waiting for " + name + "; nothing was deleted" : "giving up on " + root.pendingVerb + " — asking it to stop"
+      root.lastError = waiting ? "gave up waiting for " + name + "; nothing was deleted"
+        : deleting ? "gave up deleting " + name + "; it may be partly deleted"
+        : "giving up on " + root.pendingVerb + " — asking it to stop"
       root.abandoning = true
     } else root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
     if (actionProcess.running) {
@@ -712,10 +727,12 @@ Singleton {
     path: Model.pkgScriptPath(root.configHome)
     printErrors: false
     onLoaded: {
+      var changed = root.pkgScript !== path
       root.pkgScript = path
       root.pkgDone = true
-      root.optDone = false
-      root.optReply = ""
+      // A re-probe of the same path keeps the last verdict until the new one
+      // lands, so actions do not flicker away every probe.
+      if (changed) { root.optDone = false; root.optReply = "" }
       if (!optProbe.running) {
         optProbe.command = Model.optProbeArgv(path)
         optProbe.running = true
@@ -778,8 +795,11 @@ Singleton {
       // nixarchy-pkg's writers exit 0 and say no in JSON instead.
       var refused = Model.writerError(actionOut.text)
       var failed = code !== 0 || refused !== ""
-      if (root.next && root.next.kind === "stream")
+      if (root.next && root.next.kind === "stream") {
         root.log = Model.capLog(root.log, (actionOut.text + "\n" + actionErr.text).split("\n").filter(function(l) { return l !== "" }))
+        // The stream never starts, so the log gets the create's own end line.
+        if (failed) { root.streamExit = code || 1; root.log = Model.capLog(root.log, ["── exit " + (code || 1) + " · failed"]) }
+      }
       if (root.next && root.next.kind === "wait" && !root.next.resending)
         root.next = Object.assign({}, root.next, { afterGen: root.listGen })
       var decision = Model.continueAfter(root.next, { type: "exit", ok: !failed, phase: root.next && root.next.resending ? "resend" : root.pendingCommand })
