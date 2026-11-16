@@ -513,3 +513,12 @@ text below, they win.**
   6. **The verdict flickered on every re-probe** (Opus). A `pkgFile` reload
      of the same path keeps the last verdict, and resets only when the path
      changes.
+- **agy's final review** was of the commit before these fixes; its three
+  bug findings are items 1, 3 and 4 above. Its new points are also applied:
+  - `docs/upstream.md` no longer says non-JSON `templates` output triggers
+    the update message (only `list` does);
+  - `run()` resets `escapable` when an action starts;
+  - `abandon()`'s message choice moved to `Model.abandonMessage`, with a
+    test;
+  - there is a test for a successful re-send exit;
+  - `advance()`'s unused fallback is removed.

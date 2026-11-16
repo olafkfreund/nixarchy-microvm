@@ -1525,6 +1525,15 @@ function continueAfter(next, event) {
   return { do: "fail", message: "invalid continuation step", next: null }
 }
 
+// What X says when it abandons a chained action. Only before rm starts is it
+// certain that nothing was deleted (#49).
+function abandonMessage(next, pendingVerb) {
+  var n = next || {}
+  if (n.kind === "wait") return "gave up waiting for " + n.name + "; nothing was deleted"
+  if (n.kind === "last" && pendingVerb === "deleting") return "gave up deleting " + n.name + "; it may be partly deleted"
+  return "giving up on " + (pendingVerb || "it") + " — asking it to stop"
+}
+
 // Whether a list says the VM is down: absent counts as stopped (#49).
 function isStopped(vms, name) {
   var list = vms || []

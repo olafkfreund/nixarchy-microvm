@@ -53,3 +53,15 @@ test("continueAfter: no second re-send, and a fresh stopped list wins over re-se
   // A clock-only tick (no fresh list) still re-sends on time.
   eq(Model.continueAfter(fresh, { type: "tick", listOk: false, listGen: 0, stopped: false, now: 31000 }).do, "stop")
 })
+
+test("abandonMessage: only the wait may promise nothing was deleted (#49 review)", () => {
+  eq(Model.abandonMessage({ kind: "wait", name: "t1" }, "deleting"), "gave up waiting for t1; nothing was deleted")
+  eq(Model.abandonMessage({ kind: "last", name: "t1" }, "deleting"), "gave up deleting t1; it may be partly deleted")
+  eq(Model.abandonMessage({ kind: "last", name: "t1" }, "creating"), "giving up on creating — asking it to stop")
+})
+
+test("continueAfter: a successful re-send exit goes back to waiting (#49 review)", () => {
+  const resend = { kind: "wait", name: "d1", since: 0, resent: true, resending: true, afterGen: 1 }
+  eq(Model.continueAfter(resend, { type: "exit", ok: true, phase: "resend" }),
+    { do: "wait", next: { kind: "wait", name: "d1", since: 0, resent: true, resending: false, afterGen: 1 } })
+})

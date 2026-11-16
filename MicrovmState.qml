@@ -264,6 +264,7 @@ Singleton {
     root.lastError = ""
     root.next = nextStep || null
     root.abandoning = false
+    root.escapable = false
     root.pendingVerb = verb
     root.pendingKey = key || ""
     root.queue = argvs.slice(1)
@@ -360,7 +361,7 @@ Singleton {
 
   function advance(decision) {
     if (root.next === null) return
-    var step = decision || Model.continueAfter(root.next, { type: "exit", ok: true, phase: "advance" })
+    var step = decision
     if (step.do === "stream") root.beginStream(Model.runDetachArgv(step.name), "run " + step.name, true)
     else if (step.do === "rm") { deadlineTimer.stop(); waitTimer.stop(); root.launch(actionProcess, Model.rmVmArgv(step.name)) }
     else if (step.do === "stop") root.launch(actionProcess, Model.stopVmArgv(step.name))
@@ -438,15 +439,11 @@ Singleton {
     if (!actionProcess.running && root.next === null) return
     if (root.next !== null) {
       // Only before rm starts is it certain that nothing was deleted.
-      var waiting = root.next.kind === "wait"
-      var deleting = root.next.kind === "last" && root.pendingVerb === "deleting"
-      var name = root.next.name
+      var why = Model.abandonMessage(root.next, root.pendingVerb)
       waitTimer.stop()
       deadlineTimer.stop()
       root.next = null
-      root.lastError = waiting ? "gave up waiting for " + name + "; nothing was deleted"
-        : deleting ? "gave up deleting " + name + "; it may be partly deleted"
-        : "giving up on " + root.pendingVerb + " — asking it to stop"
+      root.lastError = why
       root.abandoning = true
     } else root.lastError = "giving up on " + root.pendingVerb + " — asking it to stop"
     if (actionProcess.running) {

@@ -10,7 +10,7 @@ The first two shipped on 2026-09-19 and are required (`Model.upstreamVerdict`, `
 
 Probes:
 
-- `list --json` and `templates --json`: must return a JSON array (first byte `[`); non-JSON output on exit 0 also triggers the nixarchy#762 message.
+- `list --json` and `templates --json`: must return a JSON array (first byte `[`). A `list` that prints non-JSON on exit 0 also triggers the nixarchy#762 message; non-JSON `templates` output just leaves the template list empty.
 - `run --detach`, `console`, `set-template`: listed by `nixarchy-vm help`.
 - `opt replace`: when nixarchy.pkg is present, `nixarchy-pkg opt replace` with no arguments prints a usage line rather than an unknown-action error.
 - `nixarchy-service-enable --help` (#843): the reply has `usage: nixarchy-service-enable` and mentions a missing row.
