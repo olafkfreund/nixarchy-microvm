@@ -384,3 +384,12 @@ self-contained: every contract that step 1 implements is copied here.
   processes share one `commitStats` call. It holds no logic of its own. It
   also returns early when `!wantStats` (lead), so a read that finishes after
   the overview closed cannot refill the maps that closing cleared.
+- **Step 3** moves the row action buttons into a shared `ActionButtons`
+  component, used by both `VmRow` and the new card, rather than a second
+  copy. The lead checked that it is identical to the old repeater: the same
+  enablement, opacity, glyph, tooltip, danger colour, size and click.
+  - Two small presentation choices stay in QML: the card's
+    "up <uptime> · <memory>" line, joined from `overviewCard`'s
+    `uptimeText` and `memText`, and the sparkline scale `max(100,
+    highest sample)`.
+  - There is no logic beyond that.
