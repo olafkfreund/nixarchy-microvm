@@ -158,6 +158,44 @@ and not whatever slid into its place. If the selected machine leaves the list �
 you deleted it, or the filter no longer matches it — the cursor stays at that
 position and takes whichever row moves up.
 
+## The overview
+
+Press `v` in the list (with the filter not focused) to switch between the list
+and the overview, or turn on **Open on the overview** (`overviewByDefault`, off
+by default) so the panel opens there. Both views show the same VMs, and the
+same cursor, mouse, action buttons and keys work in both.
+
+Each card shows:
+- the state dot, the name, and the *disposable* or *permanent* badge;
+- the template, and where the VM comes from when that matters;
+- the status when the VM is not running cleanly (*stopped*, *not built yet*,
+  *pending apply*, *removed, pending apply*, or the verb in progress);
+- for a running VM: `up <uptime> · <memory>` in binary units (`MiB` / `GiB`),
+  its configured size, and a CPU sparkline with `cpu <n>%`, where `100%` is one
+  core;
+- `configured <memory> · <cores> cores` when the VM's size is known. A
+  non-running VM with an unapplied change adds `(pending)`; a running VM with a
+  pending edit hides the configured line until you apply, because the new size
+  is not what is running.
+
+The header shows `host <used> used · VMs <share> · <n> running`, with `· <n>
+pending` and `· <n> failed` when there are any.
+
+What the markers mean:
+- `—`: a reading is not available yet (for example, a command failed or was
+  refused, or no running VM could be read). The CPU percentage is a
+  difference between two readings, so it appears from the second poll; the
+  sparkline needs two percentages, so it appears from the third. Nothing is ever
+  shown as `0` when it is unknown, and a failed read clears its old numbers
+  rather than leaving them frozen.
+- `(partial)` after the VMs' memory total: some running VMs answered and at
+  least one did not, so the sum covers only the readable ones.
+
+Readings (`systemctl show` for running units and `/proc/meminfo` for the host)
+are taken only while a surface is open on the overview. Closing the panel,
+switching back to the list with `v`, or opening the form or the log stops them
+and clears the readings.
+
 ## Everyday tasks
 
 ### A throwaway shell
@@ -278,8 +316,8 @@ assist** setting turns the field off.
 ## Settings
 
 The bar widget's settings are `refreshIntervalSec`, `showStopped`,
-`hideWhenEmpty` and `aiAssist`. What each one does is in the
-[README](https://github.com/olafkfreund/nixarchy-microvm/blob/main/README.md#settings). The menu reads the same settings.
+`hideWhenEmpty`, `aiAssist` and `overviewByDefault`. What each one does is in
+the [README](https://github.com/olafkfreund/nixarchy-microvm/blob/main/README.md#settings). The menu reads the same settings.
 
 ## Troubleshooting
 

@@ -97,6 +97,7 @@ was, on whichever row moves up into the slot.
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
 | `u` | Refresh now |
+| `v` | Switch between the list and the overview |
 | `tab` `shift+tab` | Switch to the next / previous bar panel |
 | `X` | Give up on a change that has been running over a minute |
 | `?` | Show this list |
@@ -216,6 +217,7 @@ Set these in the bar widget's settings (Super+Alt+B), or inline on its entry in
 | `showStopped` | `true` | Off lists only running VMs. |
 | `hideWhenEmpty` | `false` | Hide the bar glyph while there are no VMs. |
 | `aiAssist` | `true` | Off hides the describe field and the `i` key even when the default agent supports it. |
+| `overviewByDefault` | `false` | Show VMs as cards with live memory, CPU and uptime when the panel opens. `v` switches either way. |
 
 ## IPC
 
