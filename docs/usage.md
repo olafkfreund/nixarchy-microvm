@@ -331,7 +331,9 @@ lists them and what happens without each.
 
 **"Busy: run demo-python — press o to watch".** Only one change runs at a
 time, across the popup and the menu. The message names the job holding the
-lock. `o` shows its log, and the key works again once the job finishes.
+lock. `o` shows its log, and the key works again once the job finishes. On a nixarchy
+without `run --detach`, a start opens a terminal that the plugin does not track,
+so it holds no lock.
 
 **A change that will not finish.** While something runs, the footer reads
 `working…` and names it. If it is still going after a minute, the footer adds

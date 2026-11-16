@@ -52,7 +52,9 @@ The walkthrough, from install to troubleshooting, is
   or a newer nixarchy-pkg (editing a permanent VM's line) appear once those
   features exist; see [`docs/upstream.md`](docs/upstream.md).
 - **One change at a time.** While a start, stop, delete, create or edit runs,
-  every other change is refused with a reason, from either surface.
+  every other change is refused with a reason, from either surface. On a nixarchy
+  without `run --detach`, a start opens a terminal that the plugin does not track,
+  so it does not block other changes.
 
 ## Size and text
 
