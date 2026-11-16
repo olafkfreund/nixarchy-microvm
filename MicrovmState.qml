@@ -83,6 +83,7 @@ Singleton {
     aiAssist: root.aiAssist,
     schemaLoaded: root.schemaText !== "",
     serviceQueued: root.pending.service === true,
+    pendingSync: root.pendingSync,
     servicesRow: root.serviceHeals ? true : root.servicesRow
   })
 
@@ -108,6 +109,10 @@ Singleton {
   property var units: []
   property var machines: []
   property var pending: ({ ok: false, machines: {}, service: false })
+  property bool pendingSync: false
+  property int appsGen: 0
+  property int pendingGen: 0
+  property string appsText: ""
 
   readonly property var allRows: Model.rowsFor(
     Model.disposableRows(root.vms).concat(Model.permanentRows(root.units, root.machines, root.pending)))
@@ -176,10 +181,14 @@ Singleton {
       unitsProcess.command = Model.unitsArgv()
       unitsProcess.running = true
     }
-    if (root.active && root.pkgScript && !pendingProcess.running) {
-      pendingProcess.command = Model.pendingArgv(root.pkgScript)
-      pendingProcess.running = true
-    }
+    root.readPending()
+  }
+
+  function readPending() {
+    if (!root.active || !root.pkgScript || pendingProcess.running) return
+    root.pendingGen = root.appsGen
+    pendingProcess.command = Model.pendingArgv(root.pkgScript)
+    pendingProcess.running = true
   }
 
   Timer {
@@ -197,7 +206,10 @@ Singleton {
     onTriggered: root.refresh()
   }
 
-  onActiveChanged: if (active) refresh()
+  onActiveChanged: {
+    if (active) refresh()
+    else pendingSync = false
+  }
   onShowStoppedChanged: if (root.active || root.background) root.refresh()
 
   // -------------------------------------------------------------- actions
@@ -210,7 +222,7 @@ Singleton {
 
   function busyText() {
     if (streamProcess.running) return "Busy: " + root.streamTitle + " — press o to watch"
-    return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + root.pendingKey.split(":")[1] : "") + " — wait for it to finish"
+    return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + Model.pendingName(root.pendingKey) : "") + " — wait for it to finish"
   }
 
   function launch(proc, argv) {
@@ -338,7 +350,7 @@ Singleton {
     onTriggered: {
       root.queue = []
       root.lastError = Model.processFailure({
-        verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+        verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
         command: root.pendingCommand, reason: "did not start"
       })
       root.pendingVerb = ""
@@ -533,8 +545,13 @@ Singleton {
     id: pendingProcess
     stdout: StdioCollector { id: pendingOut; waitForEnd: true }
     onExited: function(code) {
+      if (root.pendingGen !== root.appsGen) {
+        Qt.callLater(root.readPending)
+        return
+      }
       if (code === 0) { root.pending = Model.parsePending(pendingOut.text); root.pendingStale = false }
       else root.pendingStale = true
+      root.pendingSync = false
     }
   }
 
@@ -610,7 +627,18 @@ Singleton {
     path: root.configHome + "/nixarchy/apps.nix"
     watchChanges: true
     printErrors: false
-    onLoaded: root.machines = Model.parseMachineLines(text())
+    onLoaded: {
+      var contents = text()
+      if (contents !== root.appsText) {
+        root.appsText = contents
+        if (root.active && root.pkgScript) {
+          root.appsGen += 1
+          root.pendingSync = true
+          root.readPending()
+        }
+      }
+      root.machines = Model.parseMachineLines(contents)
+    }
     onLoadFailed: root.machines = []
     onFileChanged: reload()
   }
@@ -648,7 +676,7 @@ Singleton {
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed) {
         var why = Model.processFailure({
-          verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+          verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
           command: root.pendingCommand, code: code,
           stdout: actionOut.text, stderr: actionErr.text, refused: refused
         })

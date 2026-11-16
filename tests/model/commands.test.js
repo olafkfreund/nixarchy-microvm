@@ -123,9 +123,10 @@ test("actionsFor, disposable: the features decide enter, s and m", () => {
 
 test("actionsFor, permanent: ownership and the unit decide", () => {
   const p1 = row("permanent", "p1"), p2 = row("permanent", "p2"), p3 = row("permanent", "p3"), p4 = row("permanent", "p4")
-  eq(verbs(p1, ALL), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])   // managed, running, port and key
-  eq(verbs(p1, NONE), ["console", "restart", "stop", "logs", "remove", "copy"])           // no opt replace: no edit
-  eq(verbs(p1, {}), ["console", "restart", "stop", "logs", "remove", "copy"])             // no nixarchy.pkg: no edit; remove is nixarchy-opt-remove, on PATH
+  const appliedP1 = Object.assign({}, p1, { pending: false })
+  eq(verbs(appliedP1, ALL), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])   // managed, running, port and key
+  eq(verbs(appliedP1, NONE), ["console", "restart", "stop", "logs", "remove", "copy"])           // no opt replace: no edit
+  eq(verbs(appliedP1, {}), ["console", "restart", "stop", "logs", "remove", "copy"])             // no nixarchy.pkg: no edit; remove is nixarchy-opt-remove, on PATH
   eq(verbs(p2, ALL), ["start", "logs", "copy"])                                           // flake, failed
   eq(verbs(p3, ALL), ["start", "logs", "copy"])                                           // flake, stopped
   eq(verbs(p4, ALL), ["copy"])                                                            // managed-unsupported, not built
@@ -140,11 +141,29 @@ test("actionsFor, permanent: ownership and the unit decide", () => {
 })
 
 test("the lock disables mutations and nothing else", () => {
-  const locked = Model.actionsFor(row("permanent", "p1"), Object.assign({ mutating: true }, ALL))
+  const locked = Model.actionsFor(Object.assign({}, row("permanent", "p1"), { pending: false }), Object.assign({ mutating: true }, ALL))
   eq(locked.filter(a => a.enabled).map(a => a.verb), ["console", "logs", "copy"])
   const d = Model.actionsFor(row("disposable", "alice"), Object.assign({ mutating: true }, NONE))
   eq(d.filter(a => a.enabled).map(a => a.verb), ["copy"])
   eq(Model.actionFor(row("disposable", "alice"), NONE, "remove").danger, true)
+})
+
+test("a queued permanent change hides the console until pending state is current", () => {
+  const applied = Object.assign({}, row("permanent", "p1"), { pending: false })
+  const pending = Object.assign({}, applied, { pending: true })
+  eq(Model.verbForKey(pending, ALL, "enter"), null)
+  eq(Model.hiddenReason(pending, ALL, "console"), "apply the queued change first")
+  eq(Model.verbForKey(applied, Object.assign({}, ALL, { pendingSync: true }), "enter"), null)
+  eq(Model.hiddenReason(applied, { pendingSync: true }, "console"), "apply the queued change first")
+  eq(Model.verbForKey(applied, ALL, "enter"), "console")
+  eq(Model.hiddenReason(applied, ALL, "console"), "")
+})
+
+test("pendingName reads the name after the row kind", () => {
+  eq(Model.pendingName("permanent:p1"), "p1")
+  eq(Model.pendingName("disposable:1box"), "1box")
+  eq(Model.pendingName("p1"), "")
+  eq(Model.pendingName(""), "")
 })
 
 test("listActions and removeMessage", () => {
@@ -160,7 +179,7 @@ test("listActions and removeMessage", () => {
 test("buttonsFor shows one button per verb", () => {
   const stopped = row("disposable", "alice")
   eq(Model.buttonsFor(stopped, NONE).map(a => a.verb), ["startTerminal", "remove", "copy"])
-  eq(Model.buttonsFor(row("permanent", "p1"), ALL).map(a => a.verb), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])
+  eq(Model.buttonsFor(Object.assign({}, row("permanent", "p1"), { pending: false }), ALL).map(a => a.verb), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])
 })
 
 // razer's services.nix (2026-09-01): a header, the module, no microvm row.

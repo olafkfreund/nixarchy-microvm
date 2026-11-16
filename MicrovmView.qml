@@ -723,6 +723,8 @@ FocusScope {
               return MicrovmState.streamTitle + (MicrovmState.streamExit === 0 ? " finished" : " failed") + "   o shows the log"
             }
             if (MicrovmState.notice !== "") return MicrovmState.notice
+            if (root.cursorActive && root.hintText !== "" && root.cursorRow && root.cursorRow.pending)
+              return root.hintText + "   a applies"
             if (root.listActions.apply) return "queued for the next rebuild · a applies now (nixarchy-apply, in a terminal)"
             return root.hintText
           }
@@ -778,7 +780,7 @@ FocusScope {
             elide: Text.ElideRight
             text: MicrovmState.mutating
               ? Model.workingText({ verb: MicrovmState.pendingVerb,
-                                    key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",
+                                    key: Model.pendingName(MicrovmState.pendingKey),
                                     escapable: MicrovmState.escapable && !MicrovmState.streaming })
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText

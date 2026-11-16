@@ -1412,7 +1412,7 @@ function actionsFor(row, state) {
     out.push(action("remove", "x", Glyph.remove, "Delete, with its state  (x)", true, free))
   } else {
     var managed = row.ownership === "managed"
-    if (running && managed && trim(row.sshPort) && trim(row.sshKey)) out.push(action("console", "enter", Glyph.console, "SSH into it  (enter)", false, true))
+    if (running && managed && trim(row.sshPort) && trim(row.sshKey) && !row.pending && !s.pendingSync) out.push(action("console", "enter", Glyph.console, "SSH into it  (enter)", false, true))
     if (row.runtime !== "none") {
       if (running) {
         out.push(action("restart", "r", Glyph.restart, "Restart  (r)", false, free))
@@ -1489,6 +1489,7 @@ function hiddenReason(row, state, verb) {
     if (row.ownership !== "managed") return "console only through SSH, and this VM's line is not managed here"
     if (!trim(row.sshPort) || !trim(row.sshKey)) return "set an SSH port and key to get a console"
     if (row.runtime !== "running") return "start it first"
+    if (row.pending || s.pendingSync) return "apply the queued change first"
   }
   if (verb === "edit" || verb === "remove") {
     if (row.ownership === "flake") return "declared in your flake; edit it there"
@@ -1497,6 +1498,12 @@ function hiddenReason(row, state, verb) {
     if (verb === "edit" && !s.optReplace) return "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)"
   }
   return ""
+}
+
+function pendingName(pendingKey) {
+  var key = String(pendingKey || "")
+  var colon = key.indexOf(":")
+  return colon === -1 ? "" : key.substring(colon + 1)
 }
 
 function removeMessage(row, stateDir) {
