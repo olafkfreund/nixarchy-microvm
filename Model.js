@@ -64,6 +64,7 @@ var SHORTCUTS = [
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
+  { group: "Form", keys: "j  k  ↑ ↓", text: "In the review: scroll the line" },
   { group: "Form", keys: "j  k", text: "Move between fields; on a text field they type, so use tab" },
   { group: "Form", keys: "↓", text: "Open the picker under a template or key field" },
   { group: "Form", keys: "esc", text: "Cancel" },
@@ -396,10 +397,12 @@ function disposableRows(vms) {
 // declared somewhere this plugin cannot edit (ownership "flake").
 function permanentRows(units, machines, pending) {
   var byName = Object.create(null)
+  var fromLine = Object.create(null)
   var order = []
   var list = machines || []
   for (var m = 0; m < list.length; m++) {
     var row = baseRow("permanent", list[m].name)
+    fromLine[row.name] = true
     row.ownership = list[m].ownership
     row.line = list[m].line
     var f = list[m].fields
@@ -425,6 +428,16 @@ function permanentRows(units, machines, pending) {
     byName[name].runtime = us[u].active === "active" ? "running" : us[u].active === "failed" ? "failed" : "stopped"
   }
   var p = pending && pending.machines ? pending.machines : {}
+  var names = Object.keys(p)
+  for (var n = 0; n < names.length; n++) {
+    var removed = names[n]
+    if (p[removed] !== "removed" || fromLine[removed]) continue
+    if (!byName[removed]) {
+      byName[removed] = baseRow("permanent", removed)
+      order.push(removed)
+    }
+    byName[removed].ownership = "removed"
+  }
   var out = []
   for (var i = 0; i < order.length; i++) {
     byName[order[i]].pending = p[order[i]] !== undefined
@@ -476,6 +489,7 @@ function filterRows(rows, query) {
 
 function statusText(row) {
   if (!row) return ""
+  if (row.ownership === "removed") return "removed, pending apply"
   if (row.pending) return row.runtime === "none" ? "pending apply" : "changed, pending apply"
   if (row.runtime === "running") return "running"
   if (row.runtime === "failed") return "failed"
@@ -483,10 +497,13 @@ function statusText(row) {
   return "stopped"
 }
 
-function subtitleText(row) {
-  var owner = row.ownership === "flake" ? "declared in your flake"
+function ownershipText(row) {
+  return row.ownership === "flake" ? "declared in your flake"
     : row.ownership === "managed-unsupported" ? "apps.nix, edited by hand" : ""
-  return join([row.kind, row.template, owner])
+}
+
+function subtitleText(row) {
+  return join([row.kind, row.template, ownershipText(row)])
 }
 
 var ROW_FIELDS = ["name", "kind", "template", "runtime", "ownership", "subtitle", "status",
@@ -560,7 +577,7 @@ function bodyBudget(total, chrome) {
 // The snippet is rendered as a reference rather than repeated, because the
 // review already prints it in full immediately above; measuring nothing keeps
 // this independent of the card's width.
-function reviewCommandLines(argvs, snippet, optPath) {
+function reviewCommandLines(argvs, snippet) {
   var out = []
   var list = argvs || []
   for (var i = 0; i < list.length; i++) {
@@ -661,7 +678,12 @@ function counts(rows) {
   return out
 }
 
-function summaryText(rows, reachable) {
+function listFailure(stderr, code) {
+  return errorText(stderr) || "exit " + code
+}
+
+function summaryText(rows, reachable, listError) {
+  if (listError) return "VM list failed: " + listError
   if (!reachable) return "nixarchy-vm not found"
   var c = counts(rows)
   if (c.total === 0) return "No VMs"
@@ -678,6 +700,7 @@ function emptyText(state) {
   if (!state.everLoaded) return "Loading…"
   if (!state.reachable) return "nixarchy-vm is not on PATH"
   if (state.filtered) return "Nothing matches that filter"
+  if (state.listError) return "VM list failed: " + state.listError
   if (!state.showStopped) return "No running VMs"
   return "No VMs yet — press c to create one"
 }
@@ -837,6 +860,7 @@ function tokens(value) {
 function parseShares(value, hostHome) {
   var list = tokens(value)
   var out = []
+  var guests = Object.create(null)
   for (var i = 0; i < list.length; i++) {
     var parts = list[i].split(":")
     if (parts.length !== 2) return { error: "Each share is host:guest" }
@@ -844,6 +868,8 @@ function parseShares(value, hostHome) {
     var guest = normalizeGuestPath(parts[1])
     if (!guest) return { error: "Guest paths are absolute, with no . or .. segments" }
     if (isReservedGuest(guest)) return { error: guest + " is already used inside the guest" }
+    if (Object.prototype.hasOwnProperty.call(guests, guest)) return { error: "Two shares mount at " + guest }
+    guests[guest] = true
     var source = expandHome(parts[0], hostHome)
     if (source === null) return { error: "HOME is not a plain absolute path, so ~/ cannot be expanded; write the path in full" }
     out.push({ source: source, mountPoint: guest })
@@ -943,11 +969,17 @@ function validateForm(form, rows, templates, hostHome) {
   if (!isDescribe(f.describe)) errors.describe = "At most 500 characters, no line breaks"
 
   if (!name) errors.name = "A name is required"
-  else if (!isVmName(name, kind)) {
+  else if (!(f.editing === true
+    ? (kind === "permanent" ? isNixAttrName(name) : isReportedName(name))
+    : isVmName(name, kind))) {
     errors.name = kind === "permanent"
       ? "Lower-case letters, digits and -, starting with a letter, at most 32"
       : "Letters, digits, _ and -, starting with a letter, at most 64"
-  } else if (f.editing !== true && rowByName(rows, kind, name)) errors.name = "A " + kind + " VM called " + name + " already exists"
+  } else if (f.editing !== true) {
+    // A machine removed but not yet applied has no line, so its name is free again.
+    var existing = rowByName(rows, kind, name)
+    if (existing && existing.ownership !== "removed") errors.name = "A " + kind + " VM called " + name + " already exists"
+  }
 
   if (!isTemplate(trim(f.template), templates)) errors.template = "Pick a template from the list"
 
@@ -956,6 +988,17 @@ function validateForm(form, rows, templates, hostHome) {
     else if (parseInt(trim(f.memory), 10) > 8192) warnings.memory = "More than 8 GiB is taken from the host while the VM runs"
     if (!isCores(f.cores)) errors.cores = "Between 1 and " + CORES_MAX
     if (!isPort(f.sshPort)) errors.sshPort = "Empty (no SSH), or a port from 1024 to 65535"
+    else if (trim(f.sshPort)) {
+      var port = parseInt(f.sshPort, 10)
+      for (var p = 0; p < (rows || []).length; p++) {
+        var row = rows[p]
+        if (row.kind === "permanent" && row.name !== name && trim(row.sshPort)
+            && parseInt(row.sshPort, 10) === port) {
+          errors.sshPort = "Port " + port + " is already used by " + row.name
+          break
+        }
+      }
+    }
     if (trim(f.sshKey) && !isSshKey(f.sshKey)) errors.sshKey = "Pick a key from ~/.ssh, or paste a public key line"
     if (trim(f.sshPort) && !trim(f.sshKey)) warnings.sshKey = "The guest's dev user has no password: without a key the port reaches a daemon nobody can log into"
     var shares = parseShares(f.shares, hostHome)
@@ -1130,6 +1173,30 @@ function firstErrorIndex(fields, errors) {
     if (errors && errors[fields[i].key]) return i
   }
   return -1
+}
+
+function hiddenFieldError(fields, errors) {
+  for (var key in errors || {}) {
+    var visible = false
+    for (var i = 0; i < (fields || []).length; i++) {
+      if (fields[i].key === key) { visible = true; break }
+    }
+    if (visible) continue
+    for (var j = 0; j < FORM_FIELDS.length; j++) {
+      if (FORM_FIELDS[j].key === key) return FORM_FIELDS[j].label + ": " + errors[key]
+    }
+  }
+  return ""
+}
+
+function keysMatching(keys, query) {
+  var q = String(query || "").toLowerCase()
+  var out = []
+  for (var i = 0; i < (keys || []).length; i++) {
+    var k = keys[i]
+    if (!q || q === k.key.toLowerCase() || (k.file + " " + k.key).toLowerCase().indexOf(q) !== -1) out.push(k)
+  }
+  return out
 }
 
 function templatesMatching(templates, query) {
@@ -1350,7 +1417,7 @@ function actionsFor(row, state) {
     out.push(action("remove", "x", Glyph.remove, "Delete, with its state  (x)", true, free))
   } else {
     var managed = row.ownership === "managed"
-    if (running && managed && trim(row.sshPort) && trim(row.sshKey)) out.push(action("console", "enter", Glyph.console, "SSH into it  (enter)", false, true))
+    if (running && managed && trim(row.sshPort) && trim(row.sshKey) && !row.pending && !s.pendingSync) out.push(action("console", "enter", Glyph.console, "SSH into it  (enter)", false, true))
     if (row.runtime !== "none") {
       if (running) {
         out.push(action("restart", "r", Glyph.restart, "Restart  (r)", false, free))
@@ -1416,6 +1483,7 @@ function listActions(state, c) {
 function hiddenReason(row, state, verb) {
   var s = state || {}
   if (!row) return ""
+  if (row.kind === "permanent" && row.ownership === "removed") return "removed, pending apply"
   if (row.kind === "disposable") {
     if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
     if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
@@ -1426,6 +1494,7 @@ function hiddenReason(row, state, verb) {
     if (row.ownership !== "managed") return "console only through SSH, and this VM's line is not managed here"
     if (!trim(row.sshPort) || !trim(row.sshKey)) return "set an SSH port and key to get a console"
     if (row.runtime !== "running") return "start it first"
+    if (row.pending || s.pendingSync) return "apply the queued change first"
   }
   if (verb === "edit" || verb === "remove") {
     if (row.ownership === "flake") return "declared in your flake; edit it there"
@@ -1434,6 +1503,12 @@ function hiddenReason(row, state, verb) {
     if (verb === "edit" && !s.optReplace) return "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)"
   }
   return ""
+}
+
+function pendingName(pendingKey) {
+  var key = String(pendingKey || "")
+  var colon = key.indexOf(":")
+  return colon === -1 ? "" : key.substring(colon + 1)
 }
 
 function removeMessage(row, stateDir) {
@@ -1593,7 +1668,6 @@ function applyAgentReply(reply, form) {
     if (!Object.prototype.hasOwnProperty.call(AGENT_FIELDS, key)) continue
     var type = AGENT_FIELDS[key]
     var v = r[key]
-    if (!type) continue
     if (type === "string") {
       if (typeof v !== "string") { rejected.push(key); continue }
       if (key === "reasoning") reasoning = sanitize(v, 280)
@@ -1633,7 +1707,7 @@ function applyAgentReply(reply, form) {
 
 function sshKeysArgv(home) {
   var h = trim(home).replace(/\/+$/, "")
-  return h ? ["find", h + "/.ssh", "-maxdepth", "1", "-name", "*.pub", "-printf", "%f\\t", "-exec", "cat", "{}", ";"] : null
+  return h ? ["find", h + "/.ssh", "-maxdepth", "1", "-name", "*.pub", "-printf", "\\n%f\\t", "-exec", "cat", "{}", ";"] : null
 }
 
 function parseSshKeys(raw) {
@@ -1696,6 +1770,7 @@ function probeStale(now, probedAt) {
 function staleList(flags) {
   var f = flags || {}
   var out = []
+  if (f.vms) out.push("vms")
   if (f.units) out.push("units")
   if (f.pending) out.push("pending")
   if (f.help) out.push("help")

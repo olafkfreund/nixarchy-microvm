@@ -44,6 +44,7 @@ test("staleList names the degraded reads, in a fixed order (#23)", () => {
   eq(Model.staleList({ units: true }), ["units"])
   eq(Model.staleList({ help: true, units: true, pending: true }), ["units", "pending", "help"])
   eq(Model.staleList({ pending: true, help: true }), ["pending", "help"])
+  eq(Model.staleList({ vms: true, units: true }), ["vms", "units"])
 })
 
 test("probeStale re-probes on a schedule, not on every open (#23)", () => {
@@ -53,4 +54,18 @@ test("probeStale re-probes on a schedule, not on every open (#23)", () => {
   ok(!Model.probeStale(now, now - 9 * 60000), "nine minutes is fresh")
   ok(Model.probeStale(now, now - 600000), "ten minutes exactly is stale")
   ok(Model.probeStale(now, now - 600001), "ten minutes and a millisecond")
+})
+
+test("a failed list keeps its rows and says why (B2)", () => {
+  eq(Model.listFailure("nixarchy-vm: boom\n", 2), "boom")
+  eq(Model.listFailure("", 3), "exit 3")
+  eq(Model.summaryText([], true, "boom"), "VM list failed: boom")
+  eq(Model.summaryText([], false), "nixarchy-vm not found")
+  eq(Model.summaryText([], true), "No VMs")
+  eq(Model.summaryText([], true, ""), "No VMs")
+  const s = { everLoaded: true, reachable: true, showStopped: true, listError: "boom" }
+  eq(Model.emptyText(s), "VM list failed: boom")
+  eq(Model.emptyText(Object.assign({}, s, { filtered: true })), "Nothing matches that filter")
+  eq(Model.emptyText(Object.assign({}, s, { reachable: false })), "nixarchy-vm is not on PATH")
+  eq(Model.emptyText(Object.assign({}, s, { everLoaded: false })), "Loading…")
 })

@@ -70,7 +70,6 @@ Singleton {
   property string agentId: ""
   property var templates: []
   property var sshKeys: []
-  property bool probed: false
 
   readonly property var featureState: ({
     mutating: root.mutating,
@@ -83,6 +82,7 @@ Singleton {
     aiAssist: root.aiAssist,
     schemaLoaded: root.schemaText !== "",
     serviceQueued: root.pending.service === true,
+    pendingSync: root.pendingSync,
     servicesRow: root.serviceHeals ? true : root.servicesRow
   })
 
@@ -91,7 +91,6 @@ Singleton {
   property double probedAt: 0
 
   function probe() {
-    root.probed = true
     root.probedAt = Date.now()
     if (!templatesProcess.running) { templatesProcess.command = Model.templatesArgv(); templatesProcess.running = true }
     if (!helpProcess.running) { helpProcess.command = Model.helpArgv(); helpProcess.running = true }
@@ -108,6 +107,10 @@ Singleton {
   property var units: []
   property var machines: []
   property var pending: ({ ok: false, machines: {}, service: false })
+  property bool pendingSync: false
+  property int appsGen: 0
+  property int pendingGen: 0
+  property string appsText: ""
 
   readonly property var allRows: Model.rowsFor(
     Model.disposableRows(root.vms).concat(Model.permanentRows(root.units, root.machines, root.pending)))
@@ -117,6 +120,10 @@ Singleton {
   property bool reachable: true
   property bool loading: false
   property bool everLoaded: false
+  // A poll that failed after a good one keeps its rows and says so.
+  property bool listOk: false
+  property bool vmsStale: false
+  property string listError: ""
   property string lastError: ""
   // How many list queries have run: the `status` hook reports it, so "does it
   // poll while closed" can be measured from outside rather than assumed.
@@ -172,10 +179,14 @@ Singleton {
       unitsProcess.command = Model.unitsArgv()
       unitsProcess.running = true
     }
-    if (root.active && root.pkgScript && !pendingProcess.running) {
-      pendingProcess.command = Model.pendingArgv(root.pkgScript)
-      pendingProcess.running = true
-    }
+    root.readPending()
+  }
+
+  function readPending() {
+    if (!root.active || !root.pkgScript || pendingProcess.running) return
+    root.pendingGen = root.appsGen
+    pendingProcess.command = Model.pendingArgv(root.pkgScript)
+    pendingProcess.running = true
   }
 
   Timer {
@@ -193,7 +204,10 @@ Singleton {
     onTriggered: root.refresh()
   }
 
-  onActiveChanged: if (active) refresh()
+  onActiveChanged: {
+    if (active) refresh()
+    else pendingSync = false
+  }
   onShowStoppedChanged: if (root.active || root.background) root.refresh()
 
   // -------------------------------------------------------------- actions
@@ -206,7 +220,7 @@ Singleton {
 
   function busyText() {
     if (streamProcess.running) return "Busy: " + root.streamTitle + " — press o to watch"
-    return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + root.pendingKey.split(":")[1] : "") + " — wait for it to finish"
+    return "Busy: " + root.pendingVerb + (root.pendingKey ? " " + Model.pendingName(root.pendingKey) : "") + " — wait for it to finish"
   }
 
   function launch(proc, argv) {
@@ -334,7 +348,7 @@ Singleton {
     onTriggered: {
       root.queue = []
       root.lastError = Model.processFailure({
-        verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+        verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
         command: root.pendingCommand, reason: "did not start"
       })
       root.pendingVerb = ""
@@ -390,7 +404,15 @@ Singleton {
 
   property string schemaText: ""
 
-  function askAgent(prompt) {
+  // Which surface's call this is: the bar and the menu share this singleton, so
+  // without an owner a reply landed in whichever form was open.
+  property string agentOwner: ""
+
+  function agentBusyFor(owner) { return agentProcess.running && root.agentOwner !== owner }
+
+  function askAgent(prompt, owner) {
+    if (root.agentBusyFor(owner)) return "busy"
+    root.agentOwner = owner
     // Every refusal says why. Returning a bare false left the user pressing i
     // and watching nothing happen, with no message anywhere.
     if (agentProcess.running) { root.agentError = "the agent is still thinking"; return false }
@@ -419,8 +441,8 @@ Singleton {
   // overwritten by the generic exit line that followed it.
   property string agentEnded: ""
 
-  function cancelAgent() {
-    if (!agentProcess.running) return
+  function cancelAgent(owner) {
+    if (!agentProcess.running || root.agentOwner !== owner) return
     agentTimer.stop()
     root.agentEnded = "cancelled"
     agentProcess.running = false
@@ -430,7 +452,9 @@ Singleton {
   // Ends a call and clears everything it produced. Called when the form is
   // left or a surface is dismissed — never from reset(), which must not touch
   // the stream or the log.
-  function resetAgent() {
+  function resetAgent(owner) {
+    // Another surface's call, running or finished, is not this surface's to clear.
+    if (root.agentOwner !== "" && root.agentOwner !== owner) return
     agentTimer.stop()
     if (agentProcess.running) {
       root.agentEnded = "closed"
@@ -439,6 +463,7 @@ Singleton {
     root.reasoning = ""
     root.agentForm = null
     root.agentError = ""
+    root.agentOwner = ""
   }
 
   Timer {
@@ -470,13 +495,14 @@ Singleton {
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
-      stale: Model.staleList({ units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
+      stale: Model.staleList({ vms: root.vmsStale, units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
       command: root.pendingCommand,
       pid: actionProcess.processId,
       agentError: root.agentError,
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
-      lastError: root.lastError
+      lastError: root.lastError,
+      listError: root.listError
     })
   }
 
@@ -491,10 +517,21 @@ Singleton {
       root.loading = false
       root.everLoaded = true
       if (code !== 0) {
-        root.reachable = false
-        root.vms = []
+        if (!root.listOk && Model.trim(listErr.text) === "") {
+          root.reachable = false
+          root.vms = []
+          root.vmsStale = false
+          root.listError = ""
+        } else {
+          root.reachable = true
+          root.vmsStale = root.listOk
+          root.listError = Model.listFailure(listErr.text, code)
+        }
         return
       }
+      root.listOk = true
+      root.vmsStale = false
+      root.listError = ""
       root.reachable = true
       root.vmJson = Model.isJsonList(listOut.text)
       root.vms = Model.parseVmList(listOut.text)
@@ -517,8 +554,13 @@ Singleton {
     id: pendingProcess
     stdout: StdioCollector { id: pendingOut; waitForEnd: true }
     onExited: function(code) {
+      if (root.pendingGen !== root.appsGen) {
+        Qt.callLater(root.readPending)
+        return
+      }
       if (code === 0) { root.pending = Model.parsePending(pendingOut.text); root.pendingStale = false }
       else root.pendingStale = true
+      root.pendingSync = false
     }
   }
 
@@ -580,8 +622,10 @@ Singleton {
     printErrors: false
     onLoaded: {
       root.pkgScript = path
-      optProbe.command = Model.optProbeArgv(path)
-      optProbe.running = true
+      if (!optProbe.running) {
+        optProbe.command = Model.optProbeArgv(path)
+        optProbe.running = true
+      }
     }
     onLoadFailed: { root.pkgScript = ""; root.optReplace = false }
   }
@@ -594,7 +638,18 @@ Singleton {
     path: root.configHome + "/nixarchy/apps.nix"
     watchChanges: true
     printErrors: false
-    onLoaded: root.machines = Model.parseMachineLines(text())
+    onLoaded: {
+      var contents = text()
+      if (contents !== root.appsText) {
+        root.appsText = contents
+        if (root.active && root.pkgScript) {
+          root.appsGen += 1
+          root.pendingSync = true
+          root.readPending()
+        }
+      }
+      root.machines = Model.parseMachineLines(contents)
+    }
     onLoadFailed: root.machines = []
     onFileChanged: reload()
   }
@@ -632,7 +687,7 @@ Singleton {
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed) {
         var why = Model.processFailure({
-          verb: root.pendingVerb, key: Model.trim(root.pendingKey).split(":")[1] || "",
+          verb: root.pendingVerb, key: Model.pendingName(root.pendingKey),
           command: root.pendingCommand, code: code,
           stdout: actionOut.text, stderr: actionErr.text, refused: refused
         })

@@ -46,6 +46,11 @@ FocusScope {
   // list | form | review | log. The form, the review and the log own the
   // keyboard while open.
   property string mode: "list"
+  // Which host this view is in ("bar" or "menu"); it owns the agent calls it starts.
+  property string surface: ""
+  // Per view: the other surface's call is not this view's error.
+  property string agentNotice: ""
+  readonly property string otherSurfaceText: "the other surface is asking the agent"
 
   property string filterText: ""
 
@@ -146,11 +151,12 @@ FocusScope {
   // c, IPC create, or the menu's {"create":true}.
   function openForm(kind) {
     root.mode = "form"
+    root.agentNotice = ""
     root.helpOpen = false
     // The form binds agentError; clearing it there would break the binding
     // (#7). #23 owns the agent's lifecycle, so this goes through its API
     // rather than writing the property directly.
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
     createForm.start(kind || "disposable")
   }
 
@@ -158,8 +164,9 @@ FocusScope {
   // permanent one.
   function openEdit(row) {
     root.mode = "form"
+    root.agentNotice = ""
     root.helpOpen = false
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
     createForm.startEdit(row)
   }
 
@@ -170,7 +177,15 @@ FocusScope {
 
   function openReview(form) {
     root.reviewForm = form
+    reviewScroll.contentY = 0
     setMode("review")
+  }
+
+  // j/k and the arrows in the review: one line, kept inside the content.
+  function scrollReview(dir) {
+    var line = Math.ceil(root.fontSize.caption * 1.4)
+    var max = Math.max(0, reviewScroll.contentHeight - reviewScroll.height)
+    reviewScroll.contentY = Math.max(0, Math.min(max, reviewScroll.contentY + dir * line))
   }
 
   // A refused submit changes nothing. It used to clear reviewForm and go back
@@ -193,8 +208,9 @@ FocusScope {
   function setMode(next) {
     // Read the old mode before assigning: leaving the form ends any call it
     // started, so a reply cannot land against a form that is gone.
-    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent()
+    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent(root.surface)
     root.mode = next
+    root.agentNotice = ""
     root.helpOpen = false
     Qt.callLater(root.focusForMode)
   }
@@ -202,11 +218,12 @@ FocusScope {
   // Called when the surface closes.
   function dismiss() {
     helpOpen = false
+    agentNotice = ""
     closeConfirm()
     // A call left running when the surface closes kept claude alive for up to
     // 90 s and made the next i a silent no-op. The stream and the log are
     // deliberately untouched.
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
   }
 
   // --------------------------------------------------------------- actions
@@ -314,7 +331,12 @@ FocusScope {
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
-    if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
+    if (key === "i") {
+      if (!root.listActions.assist) return
+      if (MicrovmState.agentBusyFor(root.surface)) { root.agentNotice = root.otherSurfaceText; return }
+      openForm("disposable")
+      return
+    }
     // Above the row keys so it can never be read as a lower-case x, which
     // deletes. Capital X only, and only while the offer stands.
     if (key === "X") { if (MicrovmState.escapable && !MicrovmState.streaming) MicrovmState.abandon(); return }
@@ -385,7 +407,7 @@ FocusScope {
 
         PanelHero {
           title: "MicroVMs"
-          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable)
+          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError)
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconOpacity: MicrovmState.counts.running > 0 ? 1.0 : 0.5
@@ -486,21 +508,23 @@ FocusScope {
           foreground: root.foreground
           fontFamily: root.fontFamily
           fontSize: root.fontSize
-          thinking: MicrovmState.thinking
-          agentError: MicrovmState.agentError
+          thinking: MicrovmState.thinking && MicrovmState.agentOwner === root.surface
+          agentError: MicrovmState.agentOwner === root.surface ? MicrovmState.agentError : root.agentNotice
           onSubmitted: function(form) { root.submitForm(form) }
           onReviewRequested: function(form) { root.openReview(form) }
           onCanceled: root.setMode("list")
-          onDescribeRequested: function(text) { MicrovmState.askAgent(text) }
-          onCancelAgentRequested: MicrovmState.cancelAgent()
+          onDescribeRequested: function(text) { if (MicrovmState.askAgent(text, root.surface) === "busy") root.agentNotice = root.otherSurfaceText }
+          onCancelAgentRequested: MicrovmState.cancelAgent(root.surface)
 
           // The agent's proposal, once it arrives: converted per field,
           // dropped into the form, and validated as if typed. The user
           // still Tabs through it and presses Enter.
           Connections {
             target: MicrovmState
+            // The other surface's call has ended, so its notice no longer holds.
+            function onThinkingChanged() { if (!MicrovmState.thinking) root.agentNotice = "" }
             function onAgentFormChanged() {
-              if (!MicrovmState.agentForm || root.mode !== "form") return
+              if (!MicrovmState.agentForm || root.mode !== "form" || MicrovmState.agentOwner !== root.surface) return
               var got = Model.applyAgentReply(MicrovmState.agentForm, createForm.form)
               createForm.setForm(got.form)
               createForm.reasoning = got.reasoning
@@ -520,75 +544,98 @@ FocusScope {
           id: review
           visible: root.mode === "review"
           anchors.fill: parent
-          implicitHeight: reviewColumn.implicitHeight
+          // Natural, never capped: capping it by the body budget loops through bodyNatural.
+          implicitHeight: reviewColumn.implicitHeight + reviewFooter.implicitHeight + Style.spacing.md
 
           Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape) { root.setMode("form"); Qt.callLater(createForm.focusCurrent); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitForm(root.reviewForm); event.accepted = true }
+            else if (event.key === Qt.Key_J || event.key === Qt.Key_Down) { root.scrollReview(1); event.accepted = true }
+            else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) { root.scrollReview(-1); event.accepted = true }
           }
 
-          Column {
-            id: reviewColumn
-            spacing: Style.spacing.md
+          Flickable {
+            id: reviewScroll
+            width: parent.width
+            height: review.height - reviewFooter.height - Style.spacing.md
+            contentHeight: reviewColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
-            Text {
-              text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.body
-              font.bold: true
-            }
+            Column {
+              id: reviewColumn
+              width: parent.width
+              spacing: Style.spacing.md
 
-            Text {
-              text: "This line goes into ~/.config/nixarchy/apps.nix:"
-              textFormat: Text.PlainText
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-            }
+              Text {
+                width: parent.width
+                text: root.reviewForm ? Model.formSummary(root.reviewForm) : ""
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.body
+                font.bold: true
+                wrapMode: Text.WrapAnywhere
+              }
 
-            Text {
-              text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              wrapMode: Text.WrapAnywhere
-            }
+              Text {
+                width: parent.width
+                text: "This line goes into ~/.config/nixarchy/apps.nix:"
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
+              }
 
-            Text {
-              readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
-              text: blocked !== "" ? blocked
-                : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet,
-                    root.reviewForm ? Model.optPath(root.reviewForm.name) : "").join("\n")
-              textFormat: Text.PlainText
-              color: blocked !== "" ? Commons.Color.urgent : root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              // A command is one unbroken string; wrapping it anywhere is
-              // better than hiding its tail, which is what truncation did.
-              wrapMode: Text.WrapAnywhere
-            }
+              Text {
+                width: parent.width
+                text: root.reviewForm ? Model.optPath(root.reviewForm.name) + " = " + root.reviewSnippet + ";" : ""
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WrapAnywhere
+              }
 
-            Text {
-              text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
-              textFormat: Text.PlainText
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
-              wrapMode: Text.WordWrap
-            }
+              Text {
+                width: parent.width
+                readonly property string blocked: root.reviewForm ? Model.permanentBlocked(root.reviewForm, root.features) : ""
+                text: blocked !== "" ? blocked
+                  : "Runs:\n" + Model.reviewCommandLines(root.reviewArgvs, root.reviewSnippet).join("\n")
+                textFormat: Text.PlainText
+                color: blocked !== "" ? Commons.Color.urgent : root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                // A command is one unbroken string; wrapping it anywhere is
+                // better than hiding its tail, which is what truncation did.
+                wrapMode: Text.WrapAnywhere
+              }
 
-            Text {
-              horizontalAlignment: Text.AlignRight
-              text: "enter write it   esc back to the form"
-              textFormat: Text.PlainText
-              color: root.foreground
-              opacity: 0.65
-              font.family: root.fontFamily
-              font.pixelSize: root.fontSize.caption
+              Text {
+                width: parent.width
+                text: "Nothing is built yet. Apply (a) rebuilds the whole system from apps.nix, services.nix and advanced.nix, not only this line. To add modules beyond an SSH key, edit the line in apps.nix afterwards."
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
+              }
             }
+          }
+
+          Text {
+            id: reviewFooter
+            anchors.bottom: parent.bottom
+            width: parent.width
+            horizontalAlignment: Text.AlignRight
+            text: "enter write it   esc back to the form"
+              + (reviewScroll.contentY + reviewScroll.height < reviewScroll.contentHeight ? "   ↓ more" : "")
+            textFormat: Text.PlainText
+            color: root.foreground
+            opacity: 0.65
+            font.family: root.fontFamily
+            font.pixelSize: root.fontSize.caption
           }
         }
 
@@ -638,6 +685,7 @@ FocusScope {
             text: Model.emptyText({
               everLoaded: MicrovmState.everLoaded,
               reachable: MicrovmState.reachable,
+              listError: MicrovmState.listError,
               filtered: MicrovmState.rows.length > 0,
               showStopped: MicrovmState.showStopped
             })
@@ -720,11 +768,14 @@ FocusScope {
           width: parent.width
           visible: text !== "" && MicrovmState.lastError === "" && root.mode === "list"
           text: {
+            if (root.agentNotice !== "") return root.agentNotice
             if (MicrovmState.streaming) return MicrovmState.streamTitle + " …   o to watch"
             if (MicrovmState.streamExit >= 0) {
               return MicrovmState.streamTitle + (MicrovmState.streamExit === 0 ? " finished" : " failed") + "   o shows the log"
             }
             if (MicrovmState.notice !== "") return MicrovmState.notice
+            if (root.cursorActive && root.hintText !== "" && root.cursorRow && root.cursorRow.pending)
+              return root.hintText + "   a applies"
             if (root.listActions.apply) return "queued for the next rebuild · a applies now (nixarchy-apply, in a terminal)"
             return root.hintText
           }
@@ -778,9 +829,9 @@ FocusScope {
             // truncating.
             width: Math.min(implicitWidth, parent.width / 2)
             elide: Text.ElideRight
-            text: MicrovmState.mutating
+            text: MicrovmState.mutating && !MicrovmState.streaming
               ? Model.workingText({ verb: MicrovmState.pendingVerb,
-                                    key: Model.trim(MicrovmState.pendingKey).split(":")[1] || "",
+                                    key: Model.pendingName(MicrovmState.pendingKey),
                                     escapable: MicrovmState.escapable && !MicrovmState.streaming })
               : "? keys   c create" + (root.listActions.assist ? "   i describe" : "") + (root.listActions.apply ? "   a apply" : "") + "   esc close"
             textFormat: Text.PlainText

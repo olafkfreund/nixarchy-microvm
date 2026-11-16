@@ -139,6 +139,7 @@ Item {
         MicrovmView {
           id: view
           anchors.fill: parent
+          surface: "menu"
           large: true
           foreground: Commons.Color.foreground
           fontFamily: Style.font.family

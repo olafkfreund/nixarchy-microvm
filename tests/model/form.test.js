@@ -97,6 +97,10 @@ test("name rules differ per kind, and a name in use is refused only on create", 
   eq(errors({ name: "bob" }), {})                       // but not as a permanent one
   ok(errors({ name: "p1" }).name)
   eq(Model.validateForm(Object.assign(form({ name: "p1" }), { editing: true }), rows, TEMPLATES, HOME).errors, {})
+  eq(errors({ name: "Old_VM", editing: true }), {})
+  eq(errors({ name: "1box", editing: true }, "disposable"), {})
+  ok(errors({ name: "Old_VM" }).name)
+  ok(errors({ name: "1box" }, "disposable").name)
 })
 
 test("template must come from the parsed list", () => {
@@ -113,8 +117,15 @@ test("memory, cores and port are bounded integers; the port may be empty", () =>
   for (const bad of ["", "0", "65", "two"]) ok(errors({ cores: bad }).cores, bad)
   for (const bad of ["22", "80", "65536", "abc", "22 22"]) ok(errors({ sshPort: bad }).sshPort, bad)
   eq(errors({ sshPort: "" }), {})
-  eq(errors({ sshPort: "2222", sshKey: KEY }), {})
+  eq(errors({ sshPort: "2223", sshKey: KEY }), {})
   ok(Model.validateForm(form({ sshPort: "2222" }), rows, TEMPLATES, HOME).warnings.sshKey)
+})
+
+test("a permanent SSH port cannot duplicate another machine's numeric port", () => {
+  eq(errors({ sshPort: "02222" }).sshPort, "Port 2222 is already used by p1")
+  eq(errors({ name: "p1", editing: true, sshPort: "2222" }), {})
+  eq(errors({ sshPort: "2223" }), {})
+  eq(errors({ sshPort: "2222" }, "disposable"), {})
 })
 
 test("the SSH key keeps its type and blob, drops the comment, refuses the rest", () => {
@@ -148,6 +159,12 @@ test("shares: host:guest pairs, guest normalised, reserved paths refused", () =>
   ok(Model.validateForm(form({ shares: HOME + ":/mnt/home" }), rows, TEMPLATES, HOME).warnings.shares)
 })
 
+test("shares cannot repeat a normalized guest path within one machine", () => {
+  eq(Model.parseShares("/a:/mnt/a /b:/mnt//a/", HOME), { error: "Two shares mount at /mnt/a" })
+  eq(errors({ shares: "/a:/mnt/a /b:/mnt//a/" }).shares, "Two shares mount at /mnt/a")
+  eq(errors({ shares: "/a:/mnt/src" }), {}) // p1 uses this path in a different VM
+})
+
 test("share tags are the guest basename, unique, and never a built-in", () => {
   const tags = (list) => Model.shareTags(list.map(p => ({ source: "/h", mountPoint: p })))
   eq(tags(["/mnt/src", "/data/src", "/x/hostdir", "/y/ro-store", "/src"]), ["src", "src-2", "hostdir-2", "ro-store-2", "src-3"])
@@ -155,14 +172,15 @@ test("share tags are the guest basename, unique, and never a built-in", () => {
 })
 
 test("machineSnippet writes every field, defaults included, from validated values only", () => {
-  eq(snippet({ template: "python", memory: "4096", cores: "2", sshPort: "2222", shares: "~/src:/mnt/src", sshKey: KEY + " me@here" }), SNIPPET.replace("/home/user/src", "/home/user/src"))
+  eq(snippet({ template: "python", memory: "4096", cores: "2", sshPort: "2223", shares: "~/src:/mnt/src", sshKey: KEY + " me@here" }), SNIPPET.replace("sshPort = 2222", "sshPort = 2223"))
   eq(snippet({}), '{ template = "shell"; autostart = true; memory = 1024; cores = 1; sshPort = null; shares = [ ]; }')
-  eq(snippet({ autostart: false, shares: "/a:/mnt/a /b:/mnt/a" }), '{ template = "shell"; autostart = false; memory = 1024; cores = 1; sshPort = null; shares = [ { source = "/a"; mountPoint = "/mnt/a"; tag = "a"; } { source = "/b"; mountPoint = "/mnt/a"; tag = "a-2"; } ]; }')
+  eq(snippet({ autostart: false, shares: "/a:/mnt/a /b:/mnt/a" }), null)
+  eq(snippet({ autostart: false, shares: "/a:/mnt/a /b:/data/a" }), '{ template = "shell"; autostart = false; memory = 1024; cores = 1; sshPort = null; shares = [ { source = "/a"; mountPoint = "/mnt/a"; tag = "a"; } { source = "/b"; mountPoint = "/data/a"; tag = "a-2"; } ]; }')
   eq(snippet({ name: "$(id)" }), null)
   eq(snippet({ shares: "/a:/nix" }), null)
   eq(Model.machineSnippet(form({}, "disposable"), rows, TEMPLATES, HOME), null)
   // No " \ or ${ can reach the line: every string in it comes from an allowlist.
-  const line = snippet({ template: "python", memory: "4096", cores: "2", sshPort: "2222", shares: "~/src:/mnt/src", sshKey: KEY })
+  const line = snippet({ template: "python", memory: "4096", cores: "2", sshPort: "2223", shares: "~/src:/mnt/src", sshKey: KEY })
   ok(!/\\|\$\{/.test(line))
   eq((line.match(/"/g) || []).length % 2, 0)
 })
@@ -259,6 +277,9 @@ test("firstErrorIndex and formSummary", () => {
   eq(Model.firstErrorIndex(fields, { shares: "x", name: "y" }), fields.findIndex(f => f.key === "name"))
   eq(Model.firstErrorIndex(fields, { shares: "x" }), fields.findIndex(f => f.key === "shares"))
   eq(Model.firstErrorIndex(fields, {}), -1)
+  const editFields = Model.visibleFields(form({ editing: true }), {})
+  eq(Model.hiddenFieldError(editFields, { name: "A name is required" }), "Name: A name is required")
+  eq(Model.hiddenFieldError(fields, { name: "A name is required" }), "")
   eq(Model.formSummary(form()), "create t1 (permanent, shell)")
   eq(Model.formSummary(Model.formFromRow(Model.rowByName(rows, "disposable", "alice"))), "edit alice (disposable, shell)")
   eq(Model.optPath("p1"), "programs.nixarchy.services.microvm.machines.p1")
@@ -283,4 +304,19 @@ test("focusTarget: a question owns the keyboard, whatever the mode (#25)", () =>
   eq(Model.focusTarget({ mode: "nonsense", confirmOpen: false }), "list")
   eq(Model.focusTarget({}), "list")
   eq(Model.focusTarget(null), "list")
+})
+
+test("keysMatching filters by file or key, and takes a sequence wrapper (B1 cleanup)", () => {
+  const keys = [{ file: "id_a.pub", key: "ssh-ed25519 AAAA1" }, { file: "work.pub", key: "ssh-ed25519 BBBB2" }]
+  eq(Model.keysMatching(keys, "").length, 2)
+  eq(Model.keysMatching(keys, "WORK")[0].file, "work.pub")
+  eq(Model.keysMatching(keys, "ssh-ed25519 aaaa1").length, 1)
+  eq(Model.keysMatching({ length: 1, 0: keys[0] }, "").length, 1)
+  eq(Model.keysMatching(null, "x").length, 0)
+})
+
+test("a permanent VM removed but not yet applied frees its name for a new one (review)", () => {
+  const removed = Model.permanentRows([], [], { machines: { p5: "removed" } })
+  eq(Model.validateForm(form({ name: "p5" }), removed, TEMPLATES, HOME).errors.name, undefined)
+  ok(errors({ name: "p1" }).name) // a VM that still has its line keeps its name
 })

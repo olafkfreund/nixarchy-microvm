@@ -88,7 +88,8 @@ The popup lists your VMs, running ones first. Each row shows:
 - the name and a badge saying *disposable* or *permanent*;
 - the template, and where the VM comes from when that matters (*declared in
   your flake*, or *apps.nix, edited by hand*);
-- the state: *stopped*, *not built yet*, *pending apply*.
+- the state: *stopped*, *not built yet*, *pending apply*, *removed, pending
+  apply*.
 
 Buttons on the right of each row do the same as the keys. A key that does not
 apply to a row is not there, and the line above the footer says why, for
@@ -185,16 +186,19 @@ closing that terminal stops the VM.
    - **Start at boot**: on by default.
    - **Memory** in MiB and **Cores**.
    - **SSH port on the host**: empty means console only. With a port, the
-     guest runs sshd on it.
+     guest runs sshd on it. Each permanent VM in `apps.nix` needs its own host
+     port; reusing one says "Port N is already used by <name>". A machine
+     declared elsewhere in your flake is not checked.
    - **SSH public key**: press ↓ to pick one of your `~/.ssh/*.pub`. The
      guest's `dev` user has no password, so a port without a key reaches a
      daemon nobody can log into; the form warns.
    - **Shares**: `host:guest` pairs, space-separated, such as `~/src:/mnt/src`.
      The guest path must be absolute and cannot be `/`, `/nix` or `/mnt/host`,
-     which the guest already uses. Neither side may contain a `.` or `..`
-     segment — write the path you mean in full rather than reaching through a
-     parent. `~/` needs a plain absolute `HOME`; if yours contains anything
-     unusual, spell the host path out instead.
+     which the guest already uses, and two shares on the same VM cannot use the
+     same guest path ("Two shares mount at <path>"). Neither side may contain
+     a `.` or `..` segment — write the path you mean in full rather than
+     reaching through a parent. `~/` needs a plain absolute `HOME`; if yours
+     contains anything unusual, spell the host path out instead.
 3. Press Enter. The **review** shows the exact line that will go into
    `~/.config/nixarchy/apps.nix`, the two commands that write it (the
    `microvm` service row, then the line), and a reminder that applying
@@ -213,9 +217,10 @@ rewriting it; it can still be started, stopped and watched.
 
 `m` on a permanent VM opens the same form with its values filled in; Enter goes
 to the review again, which says `opt replace`, and rewrites the line in place.
-`m` on a stopped disposable VM changes its template. On an older install
-without nixarchy-pkg's `opt replace` or `nixarchy vm set-template`, the key is
-hidden and the footer says so.
+While that change waits for apply, the VM's SSH console is hidden with "apply
+the queued change first". `m` on a stopped disposable VM changes its template.
+On an older install without nixarchy-pkg's `opt replace` or `nixarchy vm
+set-template`, the key is hidden and the footer says so.
 
 ### Delete
 
@@ -223,8 +228,9 @@ hidden and the footer says so.
 with `y` or `enter` for yes, `n` or `esc` for no — the question takes the
 keyboard wherever you were, including out of the filter box. For a disposable
 VM it deletes the VM and everything in its state directory. For a permanent VM it
-removes the line from `apps.nix`; the unit and `/var/lib/microvms/<name>` stay
-until you apply, and this plugin never deletes that directory.
+removes the line from `apps.nix`; the row stays as "removed, pending apply", and
+the unit and `/var/lib/microvms/<name>` stay until you apply. This plugin never
+deletes that directory.
 
 ### Apply
 
@@ -250,7 +256,10 @@ What it cannot do:
   permanent VM).
 
 Esc while it is thinking cancels the call; it gives up on its own after 90 s.
-The **AI assist** setting turns the field off.
+Only one surface can ask at a time: while a call runs in the menu, starting one
+in the popup (or the other way round) says "the other surface is asking the
+agent", and closing the other surface leaves the running call alone. The **AI
+assist** setting turns the field off.
 
 ## Settings
 
@@ -263,11 +272,17 @@ The bar widget's settings are `refreshIntervalSec`, `showStopped`,
 **"nixarchy-vm is not on PATH".** The plugin could not run `nixarchy vm`. It
 comes with nixarchy; check `which nixarchy-vm` in a terminal.
 
+**"VM list failed: …".** `nixarchy vm list` ran and exited with an error. The
+last known rows stay on screen, and the header shows this message until a poll
+succeeds again.
+
 **Nothing happens on a key.** A command is missing (see Requirements), or the
 key does not apply to that row: the line above the footer says why.
 
-**A row says "pending apply".** Its line is in `apps.nix` but the system has
-not been rebuilt since. Press `a`, or run `nixarchy-apply` yourself.
+**A row says "pending apply" or "removed, pending apply".** Its line in
+`apps.nix` was added, changed or removed, and the system has not been rebuilt
+since. While a change waits, a permanent VM's console is hidden with "apply the
+queued change first". Press `a`, or run `nixarchy-apply` yourself.
 
 **"Failed to start microvm@…: Interactive authentication required" or
 "Access denied".** systemd asked polkit and the prompt was refused, or no
@@ -331,7 +346,9 @@ lists them and what happens without each.
 
 **"Busy: run demo-python — press o to watch".** Only one change runs at a
 time, across the popup and the menu. The message names the job holding the
-lock. `o` shows its log, and the key works again once the job finishes.
+lock. `o` shows its log, and the key works again once the job finishes. On a nixarchy
+without `run --detach`, a start opens a terminal that the plugin does not track,
+so it holds no lock.
 
 **A change that will not finish.** While something runs, the footer reads
 `working…` and names it. If it is still going after a minute, the footer adds

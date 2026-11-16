@@ -1,4 +1,4 @@
-const { test, eq, ok, Model, LIST_JSON, UNITS_JSON, APPS_NIX, PENDING_JSON } = require("../harness.js")
+const { test, eq, ok, Model, LIST_JSON, UNITS_JSON, PATH, APPS_NIX, PENDING_JSON } = require("../harness.js")
 
 const disposable = () => Model.disposableRows(Model.parseVmList(LIST_JSON))
 const permanent = () => Model.permanentRows(Model.parseUnits(UNITS_JSON), Model.parseMachineLines(APPS_NIX), Model.parsePending(PENDING_JSON))
@@ -24,6 +24,43 @@ test("permanentRows joins units and apps.nix lines by name, three axes apart", (
   eq([by.p4.ownership, by.p4.runtime], ["managed-unsupported", "none"])
   ok(!("p5" in by))
   eq(Model.permanentRows([], [], null), [])
+})
+
+test("permanentRows keeps only confirmed removals without an apps.nix line", () => {
+  const pending = Model.parsePending(JSON.stringify({ ok: true, changes: [
+    { marker: "opt:" + PATH + "p1", change: "removed" },
+    { marker: "opt:" + PATH + "p2", change: "removed" },
+    { marker: "opt:" + PATH + "p5", change: "removed" },
+    { marker: "opt:" + PATH + "p6", change: "added" }
+  ] }))
+  const rows = Model.permanentRows(Model.parseUnits(UNITS_JSON), Model.parseMachineLines(APPS_NIX), pending)
+  const by = Object.fromEntries(rows.map(r => [r.name, r]))
+  eq(rows.filter(r => r.name === "p5").length, 1)
+  eq([by.p5.ownership, by.p5.runtime, by.p5.pending], ["removed", "none", true])
+  eq([by.p2.ownership, by.p2.runtime, by.p2.pending], ["removed", "failed", true])
+  eq(by.p3.ownership, "flake")
+  eq(by.p1.ownership, "managed") // the line still exists
+  ok(!by.p6)
+  eq(Model.listActions({ pkgScript: "/pkg" }, Model.counts([by.p5])).apply, true)
+})
+
+test("removed ownership takes precedence in status, reasons, and subtitles", () => {
+  const removed = Model.permanentRows([], [], { machines: { p5: "removed" } })[0]
+  eq(Model.statusText(removed), "removed, pending apply")
+  eq(Model.rowsFor([removed])[0].subtitle, "permanent")
+  for (const verb of ["console", "start", "stop", "restart", "edit", "remove", "logs", "copy"])
+    eq(Model.hiddenReason(removed, {}, verb), "removed, pending apply")
+  for (const [ownership, label, reason] of [
+    ["flake", "declared in your flake", "declared in your flake; edit it there"],
+    ["managed-unsupported", "apps.nix, edited by hand", "this line was edited by hand; edit it in apps.nix"],
+    ["managed", "", ""],
+    ["removed", "", "removed, pending apply"]
+  ]) {
+    const row = Object.assign({}, removed, { ownership, pending: ownership === "removed", runtime: "stopped" })
+    eq(Model.ownershipText(row), label)
+    eq(Model.statusText(row), ownership === "removed" ? "removed, pending apply" : "stopped")
+    eq(Model.hiddenReason(row, { pkgScript: "/pkg", optReplace: true }, "edit"), reason)
+  }
 })
 
 test("mergeRows: running, failed, pending, then by name", () => {

@@ -232,7 +232,9 @@ is the check that keeps this paragraph honest.
   under the state directory is written by this plugin.
 - **One mutation at a time, via the singleton.** Start, stop, restart, create, edit
   and delete are refused while another mutation runs, from either surface. Listing,
-  console, logs, copy, apply and the agent call never lock.
+  console, logs, copy, apply and the agent call never lock. On nixarchy without
+  `run --detach` (nixarchy#762), a start opens a terminal that is not tracked, so it
+  does not hold the lock.
 - **One `singleton MicrovmState` line in `qmldir`.** *(checked: singleton)*
   Without it the bar and the menu each get their own state, and "one mutation at
   a time" silently stops holding.
