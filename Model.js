@@ -205,10 +205,19 @@ function optPath(name) {
 // ---------------------------------------------------------------- parsing
 
 
-// `[` first means the JSON the upstream PR adds; anything else is today's
-// text. The caller learns which it got from `isJsonList`.
+// The list commands return JSON arrays. A different first byte means an old
+// nixarchy answered without --json support.
 function isJsonList(raw) {
   return trim(raw).charAt(0) === "["
+}
+
+function isTooOldList(raw) {
+  if (!trim(raw)) return false
+  try {
+    return !Array.isArray(JSON.parse(String(raw)))
+  } catch (e) {
+    return true
+  }
 }
 
 function parseJsonArray(raw) {
@@ -220,61 +229,33 @@ function parseJsonArray(raw) {
   }
 }
 
-// `nixarchy vm list`: with --json, [{name, template, running, dir}]; without,
-//   VMs:
-//     alice            template=shell      stopped
-// or "No VMs yet. …". Either way: [{name, template, running, dir}].
+// `nixarchy vm list --json`: [{name, template, running, dir}].
 function parseVmList(raw) {
   var out = []
-  if (isJsonList(raw)) {
-    var list = parseJsonArray(raw)
-    for (var j = 0; j < list.length; j++) {
-      var item = list[j] || {}
-      if (!isReportedName(item.name)) continue
-      out.push({
-        name: String(item.name),
-        template: isTemplateName(item.template) ? String(item.template) : "?",
-        running: item.running === true,
-        dir: sanitize(item.dir, 4096)
-      })
-    }
-    return out
-  }
-  var lines = String(raw || "").split("\n")
-  for (var i = 0; i < lines.length; i++) {
-    var m = lines[i].match(/^\s*(\S+)\s+template=(\S+)\s+(running|stopped)\s*$/)
-    if (!m || !isReportedName(m[1])) continue
-    out.push({ name: m[1], template: isTemplateName(m[2]) ? m[2] : "?", running: m[3] === "running", dir: "" })
+  if (!isJsonList(raw)) return out
+  var list = parseJsonArray(raw)
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i] || {}
+    if (!isReportedName(item.name)) continue
+    out.push({
+      name: String(item.name),
+      template: isTemplateName(item.template) ? String(item.template) : "?",
+      running: item.running === true,
+      dir: sanitize(item.dir, 4096)
+    })
   }
   return out
 }
 
-// `nixarchy vm templates`: with --json, [{name, label, note}]; without,
-//   Templates:
-//     shell      Shell
-//                  A bare NixOS shell …
-// The note line is the one indented past the name column.
+// `nixarchy vm templates --json`: [{name, label, note}].
 function parseTemplates(raw) {
   var out = []
-  if (isJsonList(raw)) {
-    var list = parseJsonArray(raw)
-    for (var j = 0; j < list.length; j++) {
-      var item = list[j] || {}
-      if (!isTemplateName(item.name)) continue
-      out.push({ name: String(item.name), label: sanitize(item.label, 40) || String(item.name), note: sanitize(item.note, 400) })
-    }
-    return out
-  }
-  var lines = String(raw || "").split("\n")
-  for (var i = 0; i < lines.length; i++) {
-    var note = lines[i].match(/^\s{12,}(\S.*)$/)
-    if (note && out.length > 0) {
-      out[out.length - 1].note = join([out[out.length - 1].note, sanitize(note[1], 400)], " ")
-      continue
-    }
-    var m = lines[i].match(/^\s{1,4}(\S+)\s+(\S.*)$/)
-    if (!m || !isTemplateName(m[1])) continue
-    out.push({ name: m[1], label: sanitize(m[2], 40), note: "" })
+  if (!isJsonList(raw)) return out
+  var list = parseJsonArray(raw)
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i] || {}
+    if (!isTemplateName(item.name)) continue
+    out.push({ name: String(item.name), label: sanitize(item.label, 40) || String(item.name), note: sanitize(item.note, 400) })
   }
   return out
 }
@@ -682,9 +663,10 @@ function listFailure(stderr, code) {
   return errorText(stderr) || "exit " + code
 }
 
-function summaryText(rows, reachable, listError) {
-  if (listError) return "VM list failed: " + listError
+function summaryText(rows, reachable, listError, upstreamError) {
   if (!reachable) return "nixarchy-vm not found"
+  if (upstreamError) return upstreamError
+  if (listError) return "VM list failed: " + listError
   var c = counts(rows)
   if (c.total === 0) return "No VMs"
   return c.running + " of " + c.total + " running"
@@ -700,6 +682,7 @@ function emptyText(state) {
   if (!state.everLoaded) return "Loading…"
   if (!state.reachable) return "nixarchy-vm is not on PATH"
   if (state.filtered) return "Nothing matches that filter"
+  if (state.upstreamError) return state.upstreamError
   if (state.listError) return "VM list failed: " + state.listError
   if (!state.showStopped) return "No running VMs"
   return "No VMs yet — press c to create one"
@@ -1211,18 +1194,15 @@ function templatesMatching(templates, query) {
 
 // ---------------------------------------------------------------- features
 //
-// Nothing about the tools is assumed. `nixarchy vm help` says which of the
-// upstream subcommands exist (nixarchy#762), and nixarchy-pkg answers
-// `opt replace` with a usage line once it has it (nixarchy-pkg#19). JSON
-// listing is detected from the output itself (isJsonList).
-
-function detectFeatures(helpText) {
+// The required nixarchy commands are named in help; nixarchy-pkg answers
+// `opt replace` with a usage line. JSON listing is checked separately.
+function upstreamVerdict(helpText, optReply, pkgPresent) {
   var text = String(helpText || "")
-  return {
-    vmDetach: /\brun\b[^\n]*--detach/.test(text),
-    vmConsole: /\bvm console\b/.test(text),
-    vmSetTemplate: /\bset-template\b/.test(text)
-  }
+  if (!/\brun\b[^\n]*--detach/.test(text) || !/\bvm console\b/.test(text) || !/\bset-template\b/.test(text))
+    return "This plugin needs nixarchy with nixarchy vm run --detach, console and set-template (nixarchy#762); update nixarchy"
+  if (pkgPresent && !optReplaceSupported(optReply))
+    return "This plugin needs nixarchy-pkg opt replace (nixarchy-pkg#19); update nixarchy.pkg"
+  return ""
 }
 
 // Today: {"ok":false,"error":"opt takes describe, set or remove, not
@@ -1285,15 +1265,9 @@ function tui(appId, argv) {
   return ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-" + appId].concat(argv)
 }
 
-// A running disposable VM's console, in a terminal (needs vmConsole).
+// A running disposable VM's console, in a terminal.
 function consoleArgv(name) {
   return isReportedName(name) ? tui("console", ["nixarchy-vm", "console", name]) : null
-}
-
-// "Start in terminal": today's `run`, which builds and boots in that
-// terminal and holds the VM for as long as the terminal does.
-function runTerminalArgv(name) {
-  return isReportedName(name) ? tui("run", ["nixarchy-vm", "run", name]) : null
 }
 
 function runDetachArgv(name) {
@@ -1367,17 +1341,18 @@ function copyArgv(name) {
 
 // The queued commands for a submitted form: one for a disposable VM, two for
 // a new permanent one (the service row, then its line), one for an edit.
-// Null when the form is invalid or the feature it needs is missing.
+// Null when the form is invalid or the required upstream is unavailable.
 function submitArgvs(form, rows, templates, hostHome, state) {
   var f = form || {}
   var s = state || {}
+  if (!s.upstreamOk) return null
   if (f.kind === "permanent") {
     if (permanentBlocked(f, s)) return null
     var snippet = machineSnippet(f, rows, templates, hostHome)
     if (!snippet || !s.pkgScript) return null
     if (f.editing === true) {
       var replace = optReplaceArgv(s.pkgScript, trim(f.name), snippet)
-      return s.optReplace && replace ? [replace] : null
+      return replace ? [replace] : null
     }
     var set = optSetArgv(s.pkgScript, trim(f.name), snippet)
     return set ? [serviceEnableArgv(), set] : null
@@ -1385,7 +1360,7 @@ function submitArgvs(form, rows, templates, hostHome, state) {
   if (!validateForm(f, rows, templates, hostHome).ok) return null
   if (f.editing === true) {
     var setT = setTemplateArgv(trim(f.name), trim(f.template), templates)
-    return s.vmSetTemplate && setT ? [setT] : null
+    return setT ? [setT] : null
   }
   var create = createVmArgv(trim(f.name), trim(f.template), templates)
   return create ? [create] : null
@@ -1398,22 +1373,21 @@ function action(verb, key, glyph, tooltip, danger, enabled) {
 }
 
 // The one place a key's applicability is decided. `state` is
-// {mutating, vmDetach, vmConsole, vmSetTemplate, pkgScript, optReplace}.
+// {mutating, upstreamOk, pkgScript, pendingSync}.
 // A verb that does not apply to the row is absent; one that only waits
 // for the lock is present and disabled. Console, logs and copy never lock.
 function actionsFor(row, state) {
   if (!row) return []
   var s = state || {}
+  if (!s.upstreamOk) return [action("copy", "y", Glyph.copy, "Copy the name  (y)", false, true)]
   var free = !s.mutating
   var out = []
   var running = row.runtime === "running"
   if (row.kind === "disposable") {
-    if (running && s.vmConsole) out.push(action("console", "enter", Glyph.console, "Open the console  (enter)", false, true))
-    if (!running && !s.vmConsole) out.push(action("startTerminal", "enter", Glyph.console, "Start in a terminal  (enter)", false, free))
+    if (running) out.push(action("console", "enter", Glyph.console, "Open the console  (enter)", false, true))
     if (running) out.push(action("stop", "s", Glyph.stop, "Stop  (s)", true, free))
-    else if (s.vmDetach) out.push(action("start", "s", Glyph.play, "Start, with the build log here  (s)", false, free))
-    else out.push(action("startTerminal", "s", Glyph.play, "Start in a terminal  (s)", false, free))
-    if (!running && s.vmSetTemplate) out.push(action("edit", "m", Glyph.edit, "Change the template  (m)", false, free))
+    else out.push(action("start", "s", Glyph.play, "Start, with the build log here  (s)", false, free))
+    if (!running) out.push(action("edit", "m", Glyph.edit, "Change the template  (m)", false, free))
     out.push(action("remove", "x", Glyph.remove, "Delete, with its state  (x)", true, free))
   } else {
     var managed = row.ownership === "managed"
@@ -1427,15 +1401,14 @@ function actionsFor(row, state) {
       }
       out.push(action("logs", "l", Glyph.logs, "Follow the journal  (l)", false, true))
     }
-    if (managed && s.pkgScript && s.optReplace) out.push(action("edit", "m", Glyph.edit, "Edit its line  (m)", false, free))
+    if (managed && s.pkgScript) out.push(action("edit", "m", Glyph.edit, "Edit its line  (m)", false, free))
     if (managed) out.push(action("remove", "x", Glyph.remove, "Remove its line from apps.nix  (x)", true, free))
   }
   out.push(action("copy", "y", Glyph.copy, "Copy the name  (y)", false, true))
   return out
 }
 
-// The row's buttons: one per verb. Enter and s can share a verb (start in
-// terminal), which is one button.
+// The row's buttons: one per verb.
 function buttonsFor(row, state) {
   var list = actionsFor(row, state)
   var seen = {}
@@ -1471,23 +1444,22 @@ function listActions(state, c) {
   var s = state || {}
   var counts = c || {}
   return {
-    create: true,
+    create: !!s.upstreamOk,
     // schemaLoaded false means schema.json could not be read, so the reply
     // could never be validated: offering i would be offering a dead key.
-    assist: !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
-    apply: !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
+    assist: !!s.upstreamOk && !!s.agent && s.aiAssist !== false && s.schemaLoaded !== false,
+    apply: !!s.upstreamOk && !!s.pkgScript && (counts.pending > 0 || s.serviceQueued === true)
   }
 }
 
 // Why a key is not there, for the hint under the list.
 function hiddenReason(row, state, verb) {
   var s = state || {}
+  if (!s.upstreamOk) return s.upstreamError || "checking nixarchy…"
   if (!row) return ""
   if (row.kind === "permanent" && row.ownership === "removed") return "removed, pending apply"
   if (row.kind === "disposable") {
-    if (verb === "console" && row.runtime === "running" && !s.vmConsole) return "attaching to a running VM needs nixarchy vm console (nixarchy#762)"
     if (verb === "edit" && row.runtime === "running") return "stop it first to change the template"
-    if (verb === "edit" && !s.vmSetTemplate) return "changing the template needs nixarchy vm set-template (nixarchy#762)"
     return ""
   }
   if (verb === "console") {
@@ -1500,7 +1472,6 @@ function hiddenReason(row, state, verb) {
     if (row.ownership === "flake") return "declared in your flake; edit it there"
     if (row.ownership === "managed-unsupported") return "this line was edited by hand; edit it in apps.nix"
     if (verb === "edit" && !s.pkgScript) return "permanent VMs need the nixarchy.pkg plugin"
-    if (verb === "edit" && !s.optReplace) return "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)"
   }
   return ""
 }

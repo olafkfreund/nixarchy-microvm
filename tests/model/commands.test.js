@@ -4,16 +4,21 @@ const PKG = "/home/user/.config/omarchy/plugins/nixarchy.pkg/bin/nixarchy-pkg"
 const rows = Model.rowsFor(Model.disposableRows(Model.parseVmList(LIST_JSON))
   .concat(Model.permanentRows(Model.parseUnits(UNITS_JSON), Model.parseMachineLines(APPS_NIX), Model.parsePending(PENDING_JSON))))
 const row = (kind, name) => Model.rowByName(rows, kind, name)
-const ALL = { vmDetach: true, vmConsole: true, vmSetTemplate: true, pkgScript: PKG, optReplace: true }
-const NONE = { pkgScript: PKG }
+const ALL = { upstreamOk: true, pkgScript: PKG }
+const NONE = { upstreamOk: true, pkgScript: "" }
 const verbs = (r, s) => Model.actionsFor(r, s).map(a => a.verb)
 
-test("detectFeatures reads nixarchy vm help; today's help unlocks nothing", () => {
+test("upstreamVerdict requires current nixarchy and current nixarchy-pkg when installed", () => {
   const today = "  nixarchy vm run <name>          Build (if needed) and attach -- Ctrl-A X to\n  nixarchy vm stop <name>\n"
-  eq(Model.detectFeatures(today), { vmDetach: false, vmConsole: false, vmSetTemplate: false })
   const later = today + "  nixarchy vm run [--detach] <name>\n  nixarchy vm console <name>\n  nixarchy vm set-template <name> <t>\n"
-  eq(Model.detectFeatures(later), { vmDetach: true, vmConsole: true, vmSetTemplate: true })
-  eq(Model.detectFeatures(""), { vmDetach: false, vmConsole: false, vmSetTemplate: false })
+  const usage = "usage: nixarchy-pkg opt replace <path> <nix-value>"
+  const needsVm = "This plugin needs nixarchy with nixarchy vm run --detach, console and set-template (nixarchy#762); update nixarchy"
+  const needsPkg = "This plugin needs nixarchy-pkg opt replace (nixarchy-pkg#19); update nixarchy.pkg"
+  eq(Model.upstreamVerdict(later, usage, true), "")
+  eq(Model.upstreamVerdict(today, usage, true), needsVm)
+  eq(Model.upstreamVerdict("", usage, true), needsVm)
+  eq(Model.upstreamVerdict(later, "old pkg", true), needsPkg)
+  eq(Model.upstreamVerdict(later, "old pkg", false), "")
 })
 
 test("optReplaceSupported: today's refusal is no, a usage line is yes", () => {
@@ -28,7 +33,7 @@ test("every argv is a string array, or null on bad input", () => {
   const good = [
     Model.listArgv(), Model.templatesArgv(), Model.helpArgv(), Model.unitsArgv(), Model.defaultAgentArgv(),
     Model.serviceEnableArgv(), Model.applyTerminalArgv(), Model.pendingArgv(PKG), Model.optProbeArgv(PKG),
-    Model.consoleArgv("a"), Model.runTerminalArgv("a"), Model.runDetachArgv("a"), Model.stopVmArgv("a"), Model.rmVmArgv("a"),
+    Model.consoleArgv("a"), Model.runDetachArgv("a"), Model.stopVmArgv("a"), Model.rmVmArgv("a"),
     Model.createVmArgv("t1", "shell", TEMPLATES), Model.setTemplateArgv("a", "python", TEMPLATES),
     Model.unitArgv("start", "p1"), Model.logsArgv("p1"), Model.sshArgv("2222"),
     Model.optSetArgv(PKG, "p9", "{ }"), Model.optReplaceArgv(PKG, "p1", "{ }"), Model.optRemoveArgv("p1"), Model.copyArgv("a")
@@ -38,7 +43,7 @@ test("every argv is a string array, or null on bad input", () => {
     ok(argv.every(a => typeof a === "string" && a !== ""), JSON.stringify(argv))
   }
   for (const bad of ["", "a b", "$(id)", "-rf", "x;y", "../x", undefined]) {
-    for (const fn of [Model.consoleArgv, Model.runTerminalArgv, Model.runDetachArgv, Model.stopVmArgv, Model.rmVmArgv, Model.logsArgv, Model.optRemoveArgv, Model.copyArgv]) {
+    for (const fn of [Model.consoleArgv, Model.runDetachArgv, Model.stopVmArgv, Model.rmVmArgv, Model.logsArgv, Model.optRemoveArgv, Model.copyArgv]) {
       eq(fn(bad), null, fn.name + " " + JSON.stringify(bad))
     }
     eq(Model.unitArgv("start", bad), null)
@@ -58,7 +63,6 @@ test("every argv is a string array, or null on bad input", () => {
 
 test("terminal commands go through omarchy-launch-tui with a fixed app id", () => {
   eq(Model.consoleArgv("a"), ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-console", "nixarchy-vm", "console", "a"])
-  eq(Model.runTerminalArgv("a"), ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-run", "nixarchy-vm", "run", "a"])
   eq(Model.logsArgv("p1"), ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-logs", "journalctl", "-u", "microvm@p1", "-n", "200", "-f"])
   eq(Model.sshArgv("2222"), ["omarchy-launch-tui", "--app-id=org.omarchy.microvm-console", "ssh", "-p", "2222", "dev@localhost"])
   eq(Model.applyTerminalArgv(), ["omarchy-launch-floating-terminal-with-presentation", "nixarchy-apply"])
@@ -85,15 +89,16 @@ test("submitArgvs: create is one command, a new permanent VM is the service row 
   const d = Object.assign(Model.emptyForm("disposable"), { name: "t1", template: "python" })
   eq(Model.submitArgvs(d, rows, TEMPLATES, HOME, NONE), [["nixarchy-vm", "create", "t1", "--template", "python"]])
   const p = Object.assign(Model.emptyForm("permanent"), { name: "p9" })
-  const argvs = Model.submitArgvs(p, rows, TEMPLATES, HOME, NONE)
+  const argvs = Model.submitArgvs(p, rows, TEMPLATES, HOME, ALL)
   eq(argvs[0], ["nixarchy-service-enable", "microvm"])
   eq(argvs[1].slice(0, 4), [PKG, "opt", "set", "programs.nixarchy.services.microvm.machines.p9"])
   eq(argvs[1][4], Model.machineSnippet(p, rows, TEMPLATES, HOME))
-  eq(Model.submitArgvs(p, rows, TEMPLATES, HOME, {}), null)                       // no nixarchy.pkg
-  eq(Model.submitArgvs(Object.assign({}, p, { name: "$(id)" }), rows, TEMPLATES, HOME, NONE), null)
+  eq(Model.submitArgvs(p, rows, TEMPLATES, HOME, { upstreamOk: true }), null)    // no nixarchy.pkg
+  eq(Model.submitArgvs(Object.assign({}, p, { name: "$(id)" }), rows, TEMPLATES, HOME, ALL), null)
+  eq(Model.submitArgvs(d, rows, TEMPLATES, HOME, {}), null)                       // upstream still being checked
 })
 
-test("submitArgvs: edits need the upstream features", () => {
+test("submitArgvs: edits need the upstream verdict and pkg for permanent VMs", () => {
   const HOME = "/home/user"
   const pe = Object.assign(Model.formFromRow(row("permanent", "p1")), { memory: "2048" })
   eq(Model.submitArgvs(pe, rows, TEMPLATES, HOME, NONE), null)
@@ -102,31 +107,31 @@ test("submitArgvs: edits need the upstream features", () => {
   eq(replace[0].slice(0, 4), [PKG, "opt", "replace", "programs.nixarchy.services.microvm.machines.p1"])
   ok(replace[0][4].indexOf("memory = 2048;") !== -1)
   const de = Object.assign(Model.formFromRow(row("disposable", "alice")), { template: "python" })
-  eq(Model.submitArgvs(de, rows, TEMPLATES, HOME, NONE), null)
+  eq(Model.submitArgvs(de, rows, TEMPLATES, HOME, NONE), [["nixarchy-vm", "set-template", "alice", "python"]])
   eq(Model.submitArgvs(de, rows, TEMPLATES, HOME, ALL), [["nixarchy-vm", "set-template", "alice", "python"]])
 })
 
-test("actionsFor, disposable: the features decide enter, s and m", () => {
+test("actionsFor, disposable: running has console; stopped has start and edit", () => {
   const stopped = row("disposable", "alice"), running = row("disposable", "bob")
-  eq(verbs(stopped, NONE), ["startTerminal", "startTerminal", "remove", "copy"])
-  eq(Model.verbForKey(stopped, NONE, "enter"), "startTerminal")
-  eq(Model.verbForKey(stopped, NONE, "s"), "startTerminal")
-  eq(verbs(running, NONE), ["stop", "remove", "copy"])
-  eq(Model.verbForKey(running, NONE, "enter"), null)
+  eq(verbs(stopped, NONE), ["start", "edit", "remove", "copy"])
+  eq(Model.verbForKey(stopped, NONE, "enter"), null)
+  eq(Model.verbForKey(stopped, NONE, "s"), "start")
+  eq(verbs(running, NONE), ["console", "stop", "remove", "copy"])
+  eq(Model.verbForKey(running, NONE, "enter"), "console")
   eq(verbs(stopped, ALL), ["start", "edit", "remove", "copy"])
   eq(Model.verbForKey(stopped, ALL, "enter"), null)
   eq(verbs(running, ALL), ["console", "stop", "remove", "copy"])
-  eq(verbs(stopped, { vmDetach: true }), ["startTerminal", "start", "remove", "copy"])
-  eq(Model.verbForKey(stopped, { vmDetach: true }, "s"), "start")
-  eq(Model.verbForKey(stopped, { vmDetach: true }, "enter"), "startTerminal")
+  eq(verbs(stopped, {}), ["copy"])
+  eq(verbs(running, { upstreamOk: false, upstreamError: "update nixarchy" }), ["copy"])
+  eq(Model.verbForKey(stopped, {}, "s"), null)
 })
 
 test("actionsFor, permanent: ownership and the unit decide", () => {
   const p1 = row("permanent", "p1"), p2 = row("permanent", "p2"), p3 = row("permanent", "p3"), p4 = row("permanent", "p4")
   const appliedP1 = Object.assign({}, p1, { pending: false })
   eq(verbs(appliedP1, ALL), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])   // managed, running, port and key
-  eq(verbs(appliedP1, NONE), ["console", "restart", "stop", "logs", "remove", "copy"])           // no opt replace: no edit
-  eq(verbs(appliedP1, {}), ["console", "restart", "stop", "logs", "remove", "copy"])             // no nixarchy.pkg: no edit; remove is nixarchy-opt-remove, on PATH
+  eq(verbs(appliedP1, NONE), ["console", "restart", "stop", "logs", "remove", "copy"])           // no nixarchy.pkg: no edit
+  eq(verbs(appliedP1, { upstreamOk: true }), ["console", "restart", "stop", "logs", "remove", "copy"])
   eq(verbs(p2, ALL), ["start", "logs", "copy"])                                           // flake, failed
   eq(verbs(p3, ALL), ["start", "logs", "copy"])                                           // flake, stopped
   eq(verbs(p4, ALL), ["copy"])                                                            // managed-unsupported, not built
@@ -135,8 +140,10 @@ test("actionsFor, permanent: ownership and the unit decide", () => {
   eq(Model.hiddenReason(noKey, ALL, "console"), "set an SSH port and key to get a console")
   eq(Model.hiddenReason(p2, ALL, "edit"), "declared in your flake; edit it there")
   eq(Model.hiddenReason(p4, ALL, "remove"), "this line was edited by hand; edit it in apps.nix")
-  eq(Model.hiddenReason(p1, NONE, "edit"), "editing needs nixarchy-pkg opt replace (nixarchy-pkg#19)")
-  eq(Model.hiddenReason(row("disposable", "bob"), NONE, "console"), "attaching to a running VM needs nixarchy vm console (nixarchy#762)")
+  eq(Model.hiddenReason(p1, NONE, "edit"), "permanent VMs need the nixarchy.pkg plugin")
+  eq(Model.hiddenReason(row("disposable", "bob"), NONE, "console"), "")
+  eq(Model.hiddenReason(p1, { upstreamOk: false, upstreamError: "update nixarchy" }, "edit"), "update nixarchy")
+  eq(Model.hiddenReason(p1, {}, "edit"), "checking nixarchy…")
   eq(Model.actionsFor(null, ALL), [])
 })
 
@@ -154,7 +161,7 @@ test("a queued permanent change hides the console until pending state is current
   eq(Model.verbForKey(pending, ALL, "enter"), null)
   eq(Model.hiddenReason(pending, ALL, "console"), "apply the queued change first")
   eq(Model.verbForKey(applied, Object.assign({}, ALL, { pendingSync: true }), "enter"), null)
-  eq(Model.hiddenReason(applied, { pendingSync: true }, "console"), "apply the queued change first")
+  eq(Model.hiddenReason(applied, { upstreamOk: true, pendingSync: true }, "console"), "apply the queued change first")
   eq(Model.verbForKey(applied, ALL, "enter"), "console")
   eq(Model.hiddenReason(applied, ALL, "console"), "")
 })
@@ -167,10 +174,11 @@ test("pendingName reads the name after the row kind", () => {
 })
 
 test("listActions and removeMessage", () => {
-  eq(Model.listActions({ agent: "claude", pkgScript: PKG }, { pending: 1 }), { create: true, assist: true, apply: true })
-  eq(Model.listActions({ agent: "claude", aiAssist: false, pkgScript: PKG }, { pending: 0 }), { create: true, assist: false, apply: false })
-  eq(Model.listActions({ agent: "", pkgScript: PKG, serviceQueued: true }, {}), { create: true, assist: false, apply: true })
-  eq(Model.listActions({ agent: "claude" }, { pending: 3 }).apply, false)
+  eq(Model.listActions({ upstreamOk: true, agent: "claude", pkgScript: PKG }, { pending: 1 }), { create: true, assist: true, apply: true })
+  eq(Model.listActions({ upstreamOk: true, agent: "claude", aiAssist: false, pkgScript: PKG }, { pending: 0 }), { create: true, assist: false, apply: false })
+  eq(Model.listActions({ upstreamOk: true, agent: "", pkgScript: PKG, serviceQueued: true }, {}), { create: true, assist: false, apply: true })
+  eq(Model.listActions({ upstreamOk: true, agent: "claude" }, { pending: 3 }).apply, false)
+  eq(Model.listActions({ agent: "claude", pkgScript: PKG, serviceQueued: true }, { pending: 1 }), { create: false, assist: false, apply: false })
   eq(Model.removeMessage(row("disposable", "alice"), "/home/user/.local/state/nixarchy/microvm/"),
     "Delete alice and everything in /home/user/.local/state/nixarchy/microvm/alice? Stop it first if it is running.")
   ok(Model.removeMessage(row("permanent", "p1"), "").indexOf("/var/lib/microvms/p1 stay until you apply") !== -1)
@@ -178,7 +186,7 @@ test("listActions and removeMessage", () => {
 
 test("buttonsFor shows one button per verb", () => {
   const stopped = row("disposable", "alice")
-  eq(Model.buttonsFor(stopped, NONE).map(a => a.verb), ["startTerminal", "remove", "copy"])
+  eq(Model.buttonsFor(stopped, NONE).map(a => a.verb), ["start", "edit", "remove", "copy"])
   eq(Model.buttonsFor(Object.assign({}, row("permanent", "p1"), { pending: false }), ALL).map(a => a.verb), ["console", "restart", "stop", "logs", "edit", "remove", "copy"])
 })
 

@@ -86,7 +86,7 @@ test("fill → validate → snippet equals a typed form; hostile values only rea
   const check = Model.validateForm(hostile, rows, TEMPLATES, HOME)
   ok(check.errors.name && check.errors.template && check.errors.shares)
   eq(Model.machineSnippet(hostile, rows, TEMPLATES, HOME), null)
-  eq(Model.submitArgvs(hostile, rows, TEMPLATES, HOME, { pkgScript: "/x" }), null)
+  eq(Model.submitArgvs(hostile, rows, TEMPLATES, HOME, { upstreamOk: true, pkgScript: "/x" }), null)
 })
 
 // The envelope claude -p --output-format json printed on razer, 2026-09-21,
