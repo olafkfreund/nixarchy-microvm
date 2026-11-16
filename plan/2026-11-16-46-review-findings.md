@@ -332,8 +332,12 @@ in their findings. The note `(review)` marks a change that came from them.
      - **`i` at `:314`** (review). When
        `MicrovmState.agentBusyFor(root.surface)`, set
        `root.agentNotice` to the same text and show it in the list footer.
-       The footer's error `Text` near `:668` shows `root.agentNotice` when
-       `MicrovmState.lastError` is empty. The form does not open.
+       The form does not open.
+       - *Deviation, made during implementation:* the notice is the first
+         branch of the footer's hint `Text` (visible only when `lastError`
+         is empty, in list mode), not the error row with its dismiss
+         button. It shows in the same place and under the same condition,
+         without a dismiss control for a notice that clears itself.
      - **Clearing the notice.** `agentNotice` is cleared on `openForm`,
        `openEdit`, `setMode` and `dismiss`.
    - **Check:** `grep -n "resetAgent\|cancelAgent\|askAgent" *.qml` shows

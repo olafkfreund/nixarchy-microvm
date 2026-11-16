@@ -115,6 +115,7 @@ Panel {
     MicrovmView {
       id: view
       anchors.fill: parent
+      surface: "bar"
       foreground: root.foreground
       fontFamily: root.fontFamily
       onCloseRequested: root.close()

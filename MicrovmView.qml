@@ -45,6 +45,11 @@ FocusScope {
   // list | form | review | log. The form, the review and the log own the
   // keyboard while open.
   property string mode: "list"
+  // Which host this view is in ("bar" or "menu"); it owns the agent calls it starts.
+  property string surface: ""
+  // Per view: the other surface's call is not this view's error.
+  property string agentNotice: ""
+  readonly property string otherSurfaceText: "the other surface is asking the agent"
 
   property string filterText: ""
 
@@ -143,11 +148,12 @@ FocusScope {
   // c, IPC create, or the menu's {"create":true}.
   function openForm(kind) {
     root.mode = "form"
+    root.agentNotice = ""
     root.helpOpen = false
     // The form binds agentError; clearing it there would break the binding
     // (#7). #23 owns the agent's lifecycle, so this goes through its API
     // rather than writing the property directly.
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
     createForm.start(kind || "disposable")
   }
 
@@ -155,8 +161,9 @@ FocusScope {
   // permanent one.
   function openEdit(row) {
     root.mode = "form"
+    root.agentNotice = ""
     root.helpOpen = false
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
     createForm.startEdit(row)
   }
 
@@ -190,8 +197,9 @@ FocusScope {
   function setMode(next) {
     // Read the old mode before assigning: leaving the form ends any call it
     // started, so a reply cannot land against a form that is gone.
-    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent()
+    if (root.mode === "form" && next !== "form") MicrovmState.resetAgent(root.surface)
     root.mode = next
+    root.agentNotice = ""
     root.helpOpen = false
     Qt.callLater(root.focusForMode)
   }
@@ -199,11 +207,12 @@ FocusScope {
   // Called when the surface closes.
   function dismiss() {
     helpOpen = false
+    agentNotice = ""
     closeConfirm()
     // A call left running when the surface closes kept claude alive for up to
     // 90 s and made the next i a silent no-op. The stream and the log are
     // deliberately untouched.
-    MicrovmState.resetAgent()
+    MicrovmState.resetAgent(root.surface)
   }
 
   // --------------------------------------------------------------- actions
@@ -311,7 +320,12 @@ FocusScope {
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable"); return }
-    if (key === "i") { if (root.listActions.assist) openForm("disposable"); return }
+    if (key === "i") {
+      if (!root.listActions.assist) return
+      if (MicrovmState.agentBusyFor(root.surface)) { root.agentNotice = root.otherSurfaceText; return }
+      openForm("disposable")
+      return
+    }
     // Above the row keys so it can never be read as a lower-case x, which
     // deletes. Capital X only, and only while the offer stands.
     if (key === "X") { if (MicrovmState.escapable && !MicrovmState.streaming) MicrovmState.abandon(); return }
@@ -483,13 +497,13 @@ FocusScope {
           foreground: root.foreground
           fontFamily: root.fontFamily
           fontSize: root.fontSize
-          thinking: MicrovmState.thinking
-          agentError: MicrovmState.agentError
+          thinking: MicrovmState.thinking && MicrovmState.agentOwner === root.surface
+          agentError: MicrovmState.agentOwner === root.surface ? MicrovmState.agentError : root.agentNotice
           onSubmitted: function(form) { root.submitForm(form) }
           onReviewRequested: function(form) { root.openReview(form) }
           onCanceled: root.setMode("list")
-          onDescribeRequested: function(text) { MicrovmState.askAgent(text) }
-          onCancelAgentRequested: MicrovmState.cancelAgent()
+          onDescribeRequested: function(text) { if (MicrovmState.askAgent(text, root.surface) === "busy") root.agentNotice = root.otherSurfaceText }
+          onCancelAgentRequested: MicrovmState.cancelAgent(root.surface)
 
           // The agent's proposal, once it arrives: converted per field,
           // dropped into the form, and validated as if typed. The user
@@ -497,7 +511,7 @@ FocusScope {
           Connections {
             target: MicrovmState
             function onAgentFormChanged() {
-              if (!MicrovmState.agentForm || root.mode !== "form") return
+              if (!MicrovmState.agentForm || root.mode !== "form" || MicrovmState.agentOwner !== root.surface) return
               var got = Model.applyAgentReply(MicrovmState.agentForm, createForm.form)
               createForm.setForm(got.form)
               createForm.reasoning = got.reasoning
@@ -718,6 +732,7 @@ FocusScope {
           width: parent.width
           visible: text !== "" && MicrovmState.lastError === "" && root.mode === "list"
           text: {
+            if (root.agentNotice !== "") return root.agentNotice
             if (MicrovmState.streaming) return MicrovmState.streamTitle + " …   o to watch"
             if (MicrovmState.streamExit >= 0) {
               return MicrovmState.streamTitle + (MicrovmState.streamExit === 0 ? " finished" : " failed") + "   o shows the log"

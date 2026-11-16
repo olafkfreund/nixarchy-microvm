@@ -1663,7 +1663,6 @@ function applyAgentReply(reply, form) {
     if (!Object.prototype.hasOwnProperty.call(AGENT_FIELDS, key)) continue
     var type = AGENT_FIELDS[key]
     var v = r[key]
-    if (!type) continue
     if (type === "string") {
       if (typeof v !== "string") { rejected.push(key); continue }
       if (key === "reasoning") reasoning = sanitize(v, 280)

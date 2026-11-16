@@ -406,7 +406,15 @@ Singleton {
 
   property string schemaText: ""
 
-  function askAgent(prompt) {
+  // Which surface's call this is: the bar and the menu share this singleton, so
+  // without an owner a reply landed in whichever form was open.
+  property string agentOwner: ""
+
+  function agentBusyFor(owner) { return agentProcess.running && root.agentOwner !== owner }
+
+  function askAgent(prompt, owner) {
+    if (root.agentBusyFor(owner)) return "busy"
+    root.agentOwner = owner
     // Every refusal says why. Returning a bare false left the user pressing i
     // and watching nothing happen, with no message anywhere.
     if (agentProcess.running) { root.agentError = "the agent is still thinking"; return false }
@@ -435,8 +443,8 @@ Singleton {
   // overwritten by the generic exit line that followed it.
   property string agentEnded: ""
 
-  function cancelAgent() {
-    if (!agentProcess.running) return
+  function cancelAgent(owner) {
+    if (!agentProcess.running || root.agentOwner !== owner) return
     agentTimer.stop()
     root.agentEnded = "cancelled"
     agentProcess.running = false
@@ -446,7 +454,8 @@ Singleton {
   // Ends a call and clears everything it produced. Called when the form is
   // left or a surface is dismissed — never from reset(), which must not touch
   // the stream or the log.
-  function resetAgent() {
+  function resetAgent(owner) {
+    if (root.agentBusyFor(owner)) return
     agentTimer.stop()
     if (agentProcess.running) {
       root.agentEnded = "closed"
@@ -455,6 +464,7 @@ Singleton {
     root.reasoning = ""
     root.agentForm = null
     root.agentError = ""
+    root.agentOwner = ""
   }
 
   Timer {
