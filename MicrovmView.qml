@@ -822,7 +822,7 @@ FocusScope {
             // truncating.
             width: Math.min(implicitWidth, parent.width / 2)
             elide: Text.ElideRight
-            text: MicrovmState.mutating
+            text: MicrovmState.mutating && !MicrovmState.streaming
               ? Model.workingText({ verb: MicrovmState.pendingVerb,
                                     key: Model.pendingName(MicrovmState.pendingKey),
                                     escapable: MicrovmState.escapable && !MicrovmState.streaming })
