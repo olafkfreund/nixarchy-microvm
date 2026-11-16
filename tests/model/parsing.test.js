@@ -1,14 +1,22 @@
 const { test, eq, ok, Model, LIST_TEXT, LIST_JSON, TEMPLATES_TEXT, TEMPLATES_JSON, UNITS_JSON, PATH, APPS_NIX, PENDING_JSON } = require("../harness.js")
 
-test("parseVmList reads today's text and the JSON the upstream PR adds, the same way", () => {
-  const text = Model.parseVmList(LIST_TEXT)
-  eq(text.map(v => [v.name, v.template, v.running]), [["alice", "shell", false], ["bob", "python", true]])
-  eq(text[0].dir, "")
+test("parseVmList reads JSON only and preserves the state directory", () => {
+  eq(Model.parseVmList(LIST_TEXT), [])
   const json = Model.parseVmList(LIST_JSON)
-  eq(json.map(v => [v.name, v.template, v.running]), text.map(v => [v.name, v.template, v.running]))
+  eq(json.map(v => [v.name, v.template, v.running]), [["alice", "shell", false], ["bob", "python", true]])
   eq(json[1].dir, "/home/user/.local/state/nixarchy/microvm/bob")
   ok(!Model.isJsonList(LIST_TEXT))
   ok(Model.isJsonList("  " + LIST_JSON))
+})
+
+test("isTooOldList spots non-JSON output from an old nixarchy", () => {
+  ok(Model.isTooOldList(LIST_TEXT))
+  ok(Model.isTooOldList("No VMs yet.\n"))
+  ok(!Model.isTooOldList(LIST_JSON))
+  ok(!Model.isTooOldList("  []\n"))
+  ok(!Model.isTooOldList(" \n"))
+  ok(Model.isTooOldList("[not json"))
+  ok(Model.isTooOldList('{"name":"x"}'))
 })
 
 test("parseVmList returns [] for no VMs, garbage, and rows it cannot act on", () => {
@@ -22,16 +30,16 @@ test("parseVmList returns [] for no VMs, garbage, and rows it cannot act on", ()
   eq(Model.parseVmList(JSON.stringify([{ name: "ok", template: "$(id)", running: "yes" }])), [{ name: "ok", template: "?", running: false, dir: "" }])
 })
 
-test("parseTemplates reads both formats and joins the note to its template", () => {
-  const text = Model.parseTemplates(TEMPLATES_TEXT)
-  eq(text.map(t => t.name), ["shell", "python"])
-  eq(text[0].label, "Shell")
-  ok(text[0].note.indexOf("throwaway prompt") !== -1)
-  eq(text[1].note, "python3 and uv, 3 GiB of RAM.")
-  eq(Model.parseTemplates(TEMPLATES_JSON), text)
+test("parseTemplates reads JSON only", () => {
+  const templates = Model.parseTemplates(TEMPLATES_JSON)
+  eq(Model.parseTemplates(TEMPLATES_TEXT), [])
+  eq(templates.map(t => t.name), ["shell", "python"])
+  eq(templates[0].label, "Shell")
+  ok(templates[0].note.indexOf("throwaway prompt") !== -1)
+  eq(templates[1].note, "python3 and uv, 3 GiB of RAM.")
   eq(Model.parseTemplates(""), [])
   eq(Model.parseTemplates("Templates:\n"), [])
-  eq(Model.templateNames(text), ["shell", "python"])
+  eq(Model.templateNames(templates), ["shell", "python"])
 })
 
 test("parseUnits keeps the instance name and the two state words", () => {

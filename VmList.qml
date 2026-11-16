@@ -127,8 +127,7 @@ Item {
 
     PanelToolTip {
       visible: rowMouse.containsMouse && rowSurface.enterVerb !== ""
-      text: rowSurface.enterVerb === "console" ? "Open the console of " + rowSurface.row.name + "  (enter)"
-        : "Start " + rowSurface.row.name + " in a terminal  (enter)"
+      text: "Open the console of " + rowSurface.row.name + "  (enter)"
       fontFamily: root.fontFamily
     }
 

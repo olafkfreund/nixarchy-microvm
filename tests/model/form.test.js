@@ -264,16 +264,41 @@ test("formFromRow fixes the name and carries the row's fields", () => {
 
 test("visibleFields: kind and agent decide what the form shows", () => {
   const keys = (f, state) => Model.visibleFields(f, state).map(x => x.key)
-  eq(keys(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true }), ["describe", "kind", "name", "template"])
-  eq(keys(Model.emptyForm("disposable"), { agent: "", aiAssist: true }), ["kind", "name", "template"])
-  eq(keys(Model.emptyForm("permanent"), { agent: "claude", aiAssist: false }), ["kind", "name", "template", "autostart", "memory", "cores", "sshPort", "sshKey", "shares"])
+  eq(keys(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true }), ["describe", "kind", "name", "template", "startNow"])
+  eq(keys(Model.emptyForm("disposable"), { agent: "", aiAssist: true }), ["kind", "name", "template", "startNow"])
+  eq(keys(Model.emptyForm("permanent"), { agent: "claude", aiAssist: false }), ["kind", "name", "template", "autostart", "memory", "cores", "advanced"])
   eq(keys(Model.formFromRow(Model.rowByName(rows, "disposable", "alice")), { agent: "claude", aiAssist: true }), ["template"])
-  eq(keys(Model.formFromRow(Model.rowByName(rows, "permanent", "p1")), { agent: "claude", aiAssist: true }), ["template", "autostart", "memory", "cores", "sshPort", "sshKey", "shares"])
+  eq(keys(Model.formFromRow(Model.rowByName(rows, "permanent", "p1")), { agent: "claude", aiAssist: true }), ["template", "autostart", "memory", "cores", "advanced", "sshPort", "sshKey", "shares"])
   for (const f of Model.FORM_FIELDS) ok(f.key in Model.emptyForm(), f.key)
 })
 
+test("advanced: set from a row with SSH or shares, never emitted", () => {
+  eq(Model.formFromRow(Model.rowByName(rows, "permanent", "p1")).advanced, true)
+  eq(Model.formFromRow(Model.rowByName(rows, "disposable", "alice")).advanced, false)
+  eq(Model.visibleFields(form({ advanced: true }), {}).map(x => x.key).slice(-4), ["advanced", "sshPort", "sshKey", "shares"])
+  eq(Model.visibleFields(form({ advanced: false }), {}).map(x => x.key).slice(-1), ["advanced"])
+  ok(!Model.machineSnippet(form({ advanced: true }), rows, TEMPLATES, HOME).includes("advanced"))
+})
+
+test("startAfterCreate: only a new disposable VM that asks for it", () => {
+  const d = Object.assign(Model.emptyForm("disposable"), { name: " t1 " })
+  eq(Model.startAfterCreate(d), "t1")
+  eq(Model.startAfterCreate(Object.assign({}, d, { startNow: false })), "")
+  eq(Model.startAfterCreate(Object.assign({}, d, { editing: true })), "")
+  eq(Model.startAfterCreate(Object.assign({}, d, { kind: "permanent" })), "")
+  eq(Model.startAfterCreate(null), "")
+})
+
+test("fieldIndexOf: the field's index, or 0", () => {
+  const fields = Model.visibleFields(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true })
+  eq(Model.fieldIndexOf(fields, "name"), 2)
+  eq(Model.fieldIndexOf(fields, "describe"), 0)
+  eq(Model.fieldIndexOf(fields, "nope"), 0)
+  eq(Model.fieldIndexOf(null, "name"), 0)
+})
+
 test("firstErrorIndex and formSummary", () => {
-  const fields = Model.visibleFields(Model.emptyForm("permanent"), {})
+  const fields = Model.visibleFields(Object.assign(Model.emptyForm("permanent"), { advanced: true }), {})
   eq(Model.firstErrorIndex(fields, { shares: "x", name: "y" }), fields.findIndex(f => f.key === "name"))
   eq(Model.firstErrorIndex(fields, { shares: "x" }), fields.findIndex(f => f.key === "shares"))
   eq(Model.firstErrorIndex(fields, {}), -1)

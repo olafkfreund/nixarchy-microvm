@@ -71,7 +71,7 @@ Item {
     root.targetScreen = root.focusedScreen()
     if (!root.opened) MicrovmState.acquire("view")
     view.reset()
-    if (root.wantsCreate(payloadJson)) view.openForm("disposable")
+    if (root.wantsCreate(payloadJson)) view.openForm("disposable", "name")
     root.opened = true
   }
 
@@ -140,6 +140,7 @@ Item {
           id: view
           anchors.fill: parent
           surface: "menu"
+          opened: root.opened
           large: true
           foreground: Commons.Color.foreground
           fontFamily: Style.font.family

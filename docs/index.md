@@ -89,9 +89,10 @@ keeps running.
 </figure>
 
 **A form for either kind.** Flip the kind with <kbd>space</kbd>. A disposable
-VM is a name and a template. A permanent one adds autostart, memory, cores, an
-SSH port, an SSH key picked from `~/.ssh`, and shares. A mistake is flagged
-under the field before anything is written.
+VM is a name, a template, and a **Start it now** switch (on by default). A
+permanent one adds autostart, memory and cores, with an **SSH and shares**
+switch for the SSH port, an SSH key picked from `~/.ssh`, and shares. A mistake
+is flagged under the field before anything is written.
 
 <figure class="shot">
   <video controls muted loop playsinline preload="none" poster="img/popup.png" aria-label="Recording of creating a disposable VM from the bar popup: a name, a template picked from the list, enter">
@@ -120,8 +121,8 @@ under the field before anything is written.
   <figcaption>The whole path: <kbd>space</kbd> flips the kind, the fields are filled in, <kbd>enter</kbd> shows the review, and <kbd>enter</kbd> again writes the line. The VM is <em>pending apply</em> until you run <kbd>a</kbd>.</figcaption>
 </figure>
 
-**Describe it instead.** With `claude` as your default agent, the form starts
-with a sentence. The agent proposes the kind, the name, the template and the
+**Describe it instead.** With `claude` as your default agent, <kbd>i</kbd>
+opens the form on a sentence. The agent proposes the kind, the name, the template and the
 numbers; the form validates them as if you had typed them, and you confirm.
 
 <figure class="shot">
@@ -154,15 +155,15 @@ until you are done.
   hands one line to nixarchy.pkg's `opt set`, which parse-checks the file and
   reverts on failure. Applying is your own `nixarchy-apply`, opened in a
   terminal so you see every prompt and everything it rebuilds.
-- **It detects what your nixarchy can do.** Keys that need a newer
-  `nixarchy vm` (a build log in the panel, attaching to a running VM,
-  changing a template) or a newer nixarchy-pkg (editing a permanent VM's
-  line) appear only when those features exist, as they do on a current
-  nixarchy. On an older install, starting a disposable VM opens
-  `nixarchy vm run` in a terminal, and the footer says so.
+- **It checks your nixarchy at startup.** The plugin needs a `nixarchy vm` with
+  `list --json`, `run --detach`, `console` and `set-template` (nixarchy#762)
+  and, when nixarchy.pkg is installed, `opt replace` (nixarchy-pkg#19). Until
+  both probes finish it says `"checking nixarchy…"`, and on an older install it
+  shows one message naming what to update.
 - **One change at a time.** The bar and the menu share one state. While a
-  start, stop, delete, create or edit runs, anything else that would change a
-  VM is refused, and the refusal says why.
+  start, stop, delete, create or edit runs (including create-and-start and
+  stop-and-delete from start to finish), anything else that would change a VM
+  is refused, and the refusal says why.
 
 ## Why it is built this way
 
@@ -190,12 +191,14 @@ until you are done.
 
 1. Press <kbd>Super</kbd>+<kbd>Alt</kbd>+<kbd>V</kbd>. The list opens with
    your VMs, running first.
-2. <kbd>c</kbd>, a name, a template, <kbd>enter</kbd>: a disposable VM.
-   <kbd>s</kbd> starts it with its build in the panel, <kbd>enter</kbd> opens
-   its console, and <kbd>s</kbd> again stops it.
-3. <kbd>c</kbd>, <kbd>space</kbd> on Kind, the fields, <kbd>enter</kbd>: the
-   review shows the line. <kbd>enter</kbd> again writes it, and the row says
-   *pending apply* until <kbd>a</kbd> opens `nixarchy-apply`.
+2. <kbd>c</kbd>, a name, a template, <kbd>enter</kbd>: a disposable VM is
+   created and starts with its build in the panel. <kbd>enter</kbd> opens its
+   console, <kbd>s</kbd> stops or starts it, and <kbd>x</kbd> stops and deletes
+   it.
+3. <kbd>c</kbd>, <kbd>shift</kbd>+<kbd>tab</kbd> to Kind and <kbd>space</kbd>,
+   the fields, <kbd>enter</kbd>: the review shows the line. <kbd>enter</kbd>
+   again writes it and offers to apply now (or <kbd>a</kbd> later opens
+   `nixarchy-apply`).
 4. <kbd>i</kbd>, a sentence, <kbd>enter</kbd>: the agent fills the form.
 5. <kbd>?</kbd> lists every key. <kbd>esc</kbd> closes.
 

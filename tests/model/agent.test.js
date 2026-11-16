@@ -72,13 +72,16 @@ test("applyAgentReply converts per field, rejects wrong types, drops unknown key
   eq(wrong.rejected.sort(), ["autostart", "cores", "kind", "memory", "name", "reasoning", "shares", "sshPort", "template"])
   eq(wrong.form, Model.emptyForm("permanent"))
   eq(Model.applyAgentReply({ sshPort: null, shares: [] }, Model.emptyForm("permanent")).form.sshPort, "")
+  eq(Model.applyAgentReply({ sshPort: null, shares: [] }, Model.emptyForm("permanent")).form.advanced, false)
+  eq(Model.applyAgentReply({ sshPort: 2222 }, Model.emptyForm("permanent")).form.advanced, true)
+  eq(Model.applyAgentReply({ shares: [{ source: "/a", mountPoint: "/b" }] }, Model.emptyForm("permanent")).form.advanced, true)
   eq(Model.applyAgentReply({ shares: [{ source: "/a" }] }, Model.emptyForm("permanent")).rejected, ["shares"])
   eq(Model.applyAgentReply(null, Model.emptyForm()).form, Model.emptyForm())
 })
 
 test("fill → validate → snippet equals a typed form; hostile values only reach the validator", () => {
   const filled = Model.applyAgentReply(reply, Model.emptyForm("disposable")).form
-  const typed = Object.assign(Model.emptyForm("permanent"), { name: "py-box", template: "python", memory: "4096", cores: "2", sshPort: "2222", shares: "~/src:/mnt/src" })
+  const typed = Object.assign(Model.emptyForm("permanent"), { name: "py-box", template: "python", memory: "4096", cores: "2", sshPort: "2222", shares: "~/src:/mnt/src", advanced: true })
   eq(filled, typed)
   eq(Model.validateForm(filled, rows, TEMPLATES, HOME).errors, {})
   eq(Model.machineSnippet(filled, rows, TEMPLATES, HOME), Model.machineSnippet(typed, rows, TEMPLATES, HOME))
@@ -86,7 +89,7 @@ test("fill → validate → snippet equals a typed form; hostile values only rea
   const check = Model.validateForm(hostile, rows, TEMPLATES, HOME)
   ok(check.errors.name && check.errors.template && check.errors.shares)
   eq(Model.machineSnippet(hostile, rows, TEMPLATES, HOME), null)
-  eq(Model.submitArgvs(hostile, rows, TEMPLATES, HOME, { pkgScript: "/x" }), null)
+  eq(Model.submitArgvs(hostile, rows, TEMPLATES, HOME, { upstreamOk: true, pkgScript: "/x" }), null)
 })
 
 // The envelope claude -p --output-format json printed on razer, 2026-09-21,
