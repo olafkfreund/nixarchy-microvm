@@ -68,7 +68,7 @@ Panel {
     function refresh(): void { MicrovmState.refresh() }
     function create(): void {
       root.open()
-      view.openForm("disposable")
+      view.openForm("disposable", "name")
     }
     function status(): string { return MicrovmState.statusJson() }
   }

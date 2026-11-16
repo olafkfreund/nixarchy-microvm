@@ -149,7 +149,7 @@ FocusScope {
   }
 
   // c, IPC create, or the menu's {"create":true}.
-  function openForm(kind) {
+  function openForm(kind, field) {
     if (!MicrovmState.featureState.upstreamOk) {
       MicrovmState.lastError = MicrovmState.upstreamError || "checking nixarchy…"
       return
@@ -161,7 +161,7 @@ FocusScope {
     // (#7). #23 owns the agent's lifecycle, so this goes through its API
     // rather than writing the property directly.
     MicrovmState.resetAgent(root.surface)
-    createForm.start(kind || "disposable")
+    createForm.start(kind || "disposable", field)
   }
 
   // m on a row: the template of a disposable VM, every field of a
@@ -333,11 +333,11 @@ FocusScope {
     if (key === "u") { MicrovmState.refresh(); return }
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
-    if (key === "c") { openForm("disposable"); return }
+    if (key === "c") { openForm("disposable", "name"); return }
     if (key === "i") {
       if (!root.listActions.assist) return
       if (MicrovmState.agentBusyFor(root.surface)) { root.agentNotice = root.otherSurfaceText; return }
-      openForm("disposable")
+      openForm("disposable", "describe")
       return
     }
     // Above the row keys so it can never be read as a lower-case x, which

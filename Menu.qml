@@ -63,7 +63,7 @@ Item {
     root.targetScreen = root.focusedScreen()
     if (!root.opened) MicrovmState.acquire("view")
     view.reset()
-    if (root.wantsCreate(payloadJson)) view.openForm("disposable")
+    if (root.wantsCreate(payloadJson)) view.openForm("disposable", "name")
     root.opened = true
   }
 

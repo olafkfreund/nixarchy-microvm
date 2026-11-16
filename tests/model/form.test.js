@@ -281,6 +281,14 @@ test("startAfterCreate: only a new disposable VM that asks for it", () => {
   eq(Model.startAfterCreate(null), "")
 })
 
+test("fieldIndexOf: the field's index, or 0", () => {
+  const fields = Model.visibleFields(Model.emptyForm("disposable"), { agent: "claude", aiAssist: true })
+  eq(Model.fieldIndexOf(fields, "name"), 2)
+  eq(Model.fieldIndexOf(fields, "describe"), 0)
+  eq(Model.fieldIndexOf(fields, "nope"), 0)
+  eq(Model.fieldIndexOf(null, "name"), 0)
+})
+
 test("firstErrorIndex and formSummary", () => {
   const fields = Model.visibleFields(Model.emptyForm("permanent"), {})
   eq(Model.firstErrorIndex(fields, { shares: "x", name: "y" }), fields.findIndex(f => f.key === "name"))

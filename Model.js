@@ -1160,6 +1160,12 @@ function startAfterCreate(form) {
   return trim(f.name)
 }
 
+// Where the cursor starts: the index of `key`, or the first field.
+function fieldIndexOf(fields, key) {
+  for (var i = 0; i < (fields || []).length; i++) if (fields[i].key === key) return i
+  return 0
+}
+
 // Where the cursor lands to show the first error: in field order.
 function firstErrorIndex(fields, errors) {
   for (var i = 0; i < (fields || []).length; i++) {

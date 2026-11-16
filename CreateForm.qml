@@ -84,10 +84,12 @@ FocusScope {
   implicitHeight: formChrome + fieldsColumn.implicitHeight
 
   // Called every time the form opens: a clean form, cursor on the first field.
-  function start(kind) {
+  function start(kind, field) {
     root.setForm(Model.emptyForm(kind))
     root.reasoning = ""
     root.begin()
+    // After begin(), which resets the cursor to 0.
+    root.fieldIndex = Model.fieldIndexOf(root.fields, field)
   }
 
   function startEdit(row) {
