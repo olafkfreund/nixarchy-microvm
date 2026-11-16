@@ -11,8 +11,9 @@ import "Model.js" as Model
 //
 // The same list, form and log as the bar popup (it hosts the same
 // MicrovmView, over the same MicrovmState), but it does not need the widget
-// to be in the bar. The window is the card itself, centred at the top of the
-// focused screen with nothing dimmed; a click outside it closes it.
+// to be in the bar. It holds the keyboard for as long as it is up. The layer
+// covers the screen only to catch a click outside the card, which closes it;
+// nothing is dimmed (#50: a Hyprland focus grab let that click through).
 //
 //   omarchy-shell shell toggle nixarchy.microvm '{}'
 //   omarchy-shell shell toggle nixarchy.microvm '{"create":true}'
@@ -25,15 +26,6 @@ Item {
 
   property bool opened: false
   property var targetScreen: null
-
-  // True once the Exclusive keyboard prime is over; see panel's keyboardFocus.
-  property bool focusPrimed: false
-
-  Timer {
-    id: focusPrimeTimer
-    interval: 75
-    onTriggered: if (root.opened) root.focusPrimed = true
-  }
 
   readonly property var screenFor: root.targetScreen
     || (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
@@ -80,15 +72,12 @@ Item {
     if (!root.opened) MicrovmState.acquire("view")
     view.reset()
     if (root.wantsCreate(payloadJson)) view.openForm("disposable")
-    root.focusPrimed = false
     root.opened = true
   }
 
   function close() {
     if (root.opened) MicrovmState.release("view")
     view.dismiss()
-    focusPrimeTimer.stop()
-    root.focusPrimed = false
     root.opened = false
   }
 
@@ -105,42 +94,38 @@ Item {
   // `omarchy-shell shell call nixarchy.microvm status ''`
   function status() { return MicrovmState.statusJson() }
 
-  // Same grab as Ui/PopupCard.qml:87-94: a click outside the window clears it.
-  HyprlandFocusGrab {
-    active: root.opened && panel.backingWindowVisible && root.focusPrimed
-    windows: [panel]
-    onCleared: root.close()
-  }
-
   PanelWindow {
     id: panel
     visible: root.opened
     screen: root.screenFor
-    anchors { top: true }
-    margins.top: root.geometry.top
-    implicitWidth: root.geometry.width
-    implicitHeight: root.geometry.height
+    anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
 
     WlrLayershell.namespace: "nixarchy-microvm-menu"
     WlrLayershell.layer: WlrLayer.Overlay
-    // Exclusive for a 75 ms prime so the compositor hands us focus, then
-    // OnDemand so the grab can take it back (Ui/KeyboardPanel.qml:150-160).
-    WlrLayershell.keyboardFocus: root.opened
-      ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
-      : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
-    onBackingWindowVisibleChanged: if (backingWindowVisible && root.opened) focusPrimeTimer.restart()
     onVisibleChanged: if (visible) Qt.callLater(function() { view.focusForMode() })
+
+    // A click anywhere but the card closes the menu and goes no further.
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.close()
+    }
 
     BorderSurface {
       id: card
-      anchors.fill: parent
+      width: root.geometry.width
+      height: root.geometry.height
+      anchors.horizontalCenter: parent.horizontalCenter
+      y: root.geometry.top
       color: Commons.Color.popups.background
       borderSpec: Border.surfaceSpec("popups", "border", Commons.Color.popups.border, Math.max(1, Style.space(2)))
       padding: Style.spacing.popupPadding
       radius: Style.cornerRadius
+
+      MouseArea { anchors.fill: parent; onClicked: {} }
 
       Item {
         id: frame
