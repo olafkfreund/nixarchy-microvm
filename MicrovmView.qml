@@ -8,7 +8,7 @@ import "Model.js" as Model
 
 // Everything you can press: the list, the filter, the questions, and the
 // form, the review and the log once they are open. It draws the MicrovmState
-// singleton, so the bar popup and the full-screen menu share every key.
+// singleton, so the bar popup and the menu share every key.
 FocusScope {
   id: root
 
@@ -68,7 +68,7 @@ FocusScope {
   property bool cursorActive: false
   property bool cursorFromKeyboard: false
 
-  // A full-screen surface is read from further away than a bar popup, so each
+  // The menu is read from further away than a bar popup, so each
   // text role moves up one rung of the host's own ladder. Not a multiplier: the
   // rungs all derive from [font] base-size, so the menu tracks the desktop text
   // size instead of pulling a fixed percentage away from it, and nothing is

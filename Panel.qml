@@ -8,7 +8,7 @@ import "Model.js" as Model
 
 // The bar widget: a glyph that keeps an eye on your VMs, and a keyboard popup
 // under it. The data lives in the MicrovmState singleton, shared with the
-// full-screen menu (Menu.qml).
+// menu (Menu.qml).
 Panel {
   id: root
 

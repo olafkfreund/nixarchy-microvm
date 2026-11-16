@@ -104,10 +104,11 @@ magnified: its text is laid out at the size it is drawn, so it stays as sharp
 as the rest of the desktop. If you want it bigger, raise the desktop text size
 rather than looking for a setting here.
 
-## The full-screen menu
+## The menu
 
-The menu has the same list, form and log, on a bigger card. It opens over
-whatever you were working in and holds the keyboard until you close it:
+The menu has the same list, form and log, on a bigger card. It opens centred,
+without dimming the screen, over whatever you were working in. It holds the
+keyboard until you close it with Esc or a click outside:
 
 ```bash
 omarchy-shell shell toggle nixarchy.microvm '{}'
