@@ -181,6 +181,8 @@ test("listActions and removeMessage", () => {
   eq(Model.listActions({ agent: "claude", pkgScript: PKG, serviceQueued: true }, { pending: 1 }), { create: false, assist: false, apply: false })
   eq(Model.removeMessage(row("disposable", "alice"), "/home/user/.local/state/nixarchy/microvm/"),
     "Delete alice and everything in /home/user/.local/state/nixarchy/microvm/alice? Stop it first if it is running.")
+  eq(Model.removeMessage(row("disposable", "bob"), "/home/user/.local/state/nixarchy/microvm/"),
+    "Stop and delete bob, and everything in /home/user/.local/state/nixarchy/microvm/bob?")
   ok(Model.removeMessage(row("permanent", "p1"), "").indexOf("/var/lib/microvms/p1 stay until you apply") !== -1)
 })
 

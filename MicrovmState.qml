@@ -128,6 +128,9 @@ Singleton {
   property bool everLoaded: false
   // A poll that failed after a good one keeps its rows and says so.
   property bool listOk: false
+  property int listGen: 0
+  property int listReadGen: 0
+  property bool lastListOk: false
   property bool vmsStale: false
   property string listError: ""
   property string lastError: ""
@@ -175,14 +178,20 @@ Singleton {
 
   // -------------------------------------------------------------- refresh
 
-  function refresh() {
-    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
+  function refreshList() {
     if (!listProcess.running) {
       root.loading = true
       root.polls += 1
+      root.listGen += 1
+      root.listReadGen = root.listGen
       listProcess.command = Model.listArgv()
       listProcess.running = true
     }
+  }
+
+  function refresh() {
+    if (Model.probeStale(Date.now(), root.probedAt)) root.probe()
+    root.refreshList()
     if (!unitsProcess.running) {
       unitsProcess.command = Model.unitsArgv()
       unitsProcess.running = true
@@ -259,6 +268,7 @@ Singleton {
     root.pendingKey = key || ""
     root.queue = argvs.slice(1)
     escapeTimer.restart()
+    if (root.next && root.next.kind === "wait") deadlineTimer.restart()
     root.launch(actionProcess, argvs[0])
     return true
   }
@@ -290,6 +300,9 @@ Singleton {
 
   function remove(row) {
     if (!allowed(row, "remove")) return false
+    if (row.kind === "disposable" && row.runtime === "running")
+      return run([Model.stopVmArgv(row.name)], "deleting", row.key,
+        { kind: "wait", name: row.name, since: Date.now(), resent: false })
     var argv = row.kind === "permanent" ? Model.optRemoveArgv(row.name) : Model.rmVmArgv(row.name)
     return run([argv], "deleting", row.key)
   }
@@ -337,11 +350,30 @@ Singleton {
     if (root.next === null) return
     var step = decision || Model.continueAfter(root.next, { type: "exit", ok: true, phase: "advance" })
     if (step.do === "stream") root.beginStream(Model.runDetachArgv(step.name), "run " + step.name, true)
-    else if (step.do === "rm") root.launch(actionProcess, Model.rmVmArgv(step.name))
+    else if (step.do === "rm") { deadlineTimer.stop(); waitTimer.stop(); root.launch(actionProcess, Model.rmVmArgv(step.name)) }
     else if (step.do === "stop") root.launch(actionProcess, Model.stopVmArgv(step.name))
     else if (step.do === "wait") waitTimer.restart()
-    else if (step.do === "fail") root.lastError = step.message
+    else if (step.do === "fail") {
+      waitTimer.stop()
+      deadlineTimer.stop()
+      root.lastError = step.message
+      root.pendingVerb = ""
+      root.pendingKey = ""
+      root.escapable = false
+      escapeTimer.stop()
+    }
     root.next = step.next
+  }
+
+  function onListResult() {
+    if (!root.next || root.next.kind !== "wait" || actionProcess.running) return
+    var stopped = true
+    for (var i = 0; i < root.vms.length; i++)
+      if (root.vms[i].name === root.next.name && root.vms[i].running) stopped = false
+    root.advance(Model.continueAfter(root.next, {
+      type: "tick", listOk: root.lastListOk, listGen: root.listReadGen,
+      stopped: stopped, now: Date.now()
+    }))
   }
 
   // A nix build emits thousands of lines. Appending each one reassigned a var
@@ -378,8 +410,17 @@ Singleton {
   // says the process is gone, so a release can never race a live opt set.
   Timer { id: escapeTimer; interval: 60000; onTriggered: root.escapable = true }
   Timer { id: killTimer; interval: 3000; onTriggered: if (actionProcess.running) actionProcess.signal(9) }
-  Timer { id: waitTimer; interval: 2000 }
-  Timer { id: deadlineTimer; interval: 90000 }
+  Timer { id: waitTimer; interval: 2000; onTriggered: root.refreshList() }
+  Timer {
+    id: deadlineTimer
+    interval: 90000
+    onTriggered: {
+      if (!root.next || root.next.kind !== "wait") return
+      var name = root.next.name
+      root.abandon()
+      root.lastError = name + " did not stop within 90 s; nothing was deleted"
+    }
+  }
 
   function abandon() {
     if (!actionProcess.running && root.next === null) return
@@ -563,6 +604,7 @@ Singleton {
     onExited: function(code) {
       root.loading = false
       root.everLoaded = true
+      root.lastListOk = code === 0 && !Model.isTooOldList(listOut.text)
       if (code !== 0) {
         if (!root.listOk && Model.trim(listErr.text) === "") {
           root.reachable = false
@@ -574,14 +616,16 @@ Singleton {
           root.vmsStale = root.listOk
           root.listError = Model.listFailure(listErr.text, code)
         }
+        root.onListResult()
         return
       }
       root.listOk = true
       root.vmsStale = false
       root.listError = ""
       root.reachable = true
-      root.listTooOld = Model.isTooOldList(listOut.text)
+      root.listTooOld = !root.lastListOk
       root.vms = root.listTooOld ? [] : Model.parseVmList(listOut.text)
+      root.onListResult()
     }
   }
 
@@ -735,7 +779,10 @@ Singleton {
       var failed = code !== 0 || refused !== ""
       if (root.next && root.next.kind === "stream")
         root.log = Model.capLog(root.log, (actionOut.text + "\n" + actionErr.text).split("\n").filter(function(l) { return l !== "" }))
+      if (root.next && root.next.kind === "wait" && !root.next.resending)
+        root.next = Object.assign({}, root.next, { afterGen: root.listGen })
       var decision = Model.continueAfter(root.next, { type: "exit", ok: !failed, phase: root.next && root.next.resending ? "resend" : root.pendingCommand })
+      if (decision.do === "fail" || decision.do === "done") { waitTimer.stop(); deadlineTimer.stop() }
       if (root.queue.length === 0 || failed) root.clearBusyNotice()
       if (failed && !root.abandoning && decision.do !== "wait") {
         var why = Model.processFailure({
@@ -763,7 +810,8 @@ Singleton {
         return
       }
       if (root.next !== null && root.queue.length === 0 && decision.do !== "fail") {
-        Qt.callLater(function() { root.advance(decision) })
+        var currentStep = root.next
+        Qt.callLater(function() { if (root.next === currentStep) root.advance(decision) })
         return
       }
       if (root.queue.length > 0) {

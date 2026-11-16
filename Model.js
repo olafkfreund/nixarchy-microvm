@@ -1526,6 +1526,7 @@ function removeMessage(row, stateDir) {
   if (!row) return ""
   if (row.kind === "disposable") {
     var dir = trim(stateDir).replace(/\/+$/, "") + "/" + row.name
+    if (row.runtime === "running") return "Stop and delete " + row.name + ", and everything in " + dir + "?"
     return "Delete " + row.name + " and everything in " + dir + "? Stop it first if it is running."
   }
   return "Remove " + row.name + " from ~/.config/nixarchy/apps.nix? The unit and /var/lib/microvms/" + row.name +
