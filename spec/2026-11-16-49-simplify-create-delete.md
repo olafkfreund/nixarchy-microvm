@@ -8,229 +8,242 @@ intent: intent/2026-11-16-49-simplify-create-delete.md
 
 ## Design
 
-Line numbers are on `fix/46-review-findings` (PR #47), which this builds on.
-The work starts only after #47 merges, rebased onto `main`.
+- **Line numbers** are on `fix/46-review-findings` (PR #47), which this
+  builds on. The work starts only after #47 merges, rebased onto `main`.
+- **Revised after Codex and agy reviewed the first draft.** The revision
+  adds or changes:
+  - one explicit way to chain a step to the next (the continuation);
+  - gating at the root (the singleton and `openForm`, not the keys);
+  - the build log opening on create-and-start;
+  - a stop-and-delete wait that can be abandoned and is held by the lock;
+  - a simpler "SSH and shares" switch;
+  - an `opened` flag for the "Apply now?" question.
 
-The two failure rules the intent sets apply to every new multi-step action
-below:
+### 0. The continuation: one way to chain steps under the lock
 
-- each action holds the single mutation lock from its first step to its
-  last;
-- a failed step stops the rest.
+Today `mutating` is `actionProcess.running || streamProcess.running ||
+queue.length > 0` (`MicrovmState.qml:152`). Between two queued commands, the
+non-empty queue holds the lock across the `Qt.callLater` tick (`:704-712`).
+The new multi-step actions use the same idea.
 
-### 1. One upstream verdict instead of feature flags
+- **`property var next: null`.** It holds the step that must run after the
+  current one:
+  - `{kind: "stream", name}` for create-and-start;
+  - `{kind: "wait", name, since, resent}` for stop-and-delete;
+  - `{kind: "rm", name}` for the delete itself.
+- **The lock.** `mutating` adds `|| next !== null`.
+- **How a step hands over.**
+  - A step that finishes with success and an empty queue does not clear
+    `pendingVerb` or `pendingKey`. It schedules
+    `Qt.callLater(root.advance)`.
+  - `advance()` runs `next`, through internal entry points that skip the
+    public busy check: `beginStream(argv, title)` and `launch()`. It
+    launches *before* it clears or replaces `next`, as the queue does
+    today, so the lock never drops.
+- **Failure.** A failed step sets `lastError`, sets `next = null`, and
+  clears `pendingVerb`, as today. Nothing further runs.
+- **Abandon.** `abandon()` (`X`, `:338`) also handles a step held in `next`:
+  it sets `next = null` with "gave up waiting for <name>; nothing was
+  deleted". `escapable` turns true 60 s after the action began, measured
+  from its start rather than from the last process exit, so it also covers
+  the wait.
+- **Tests.** A new pure `Model.continueAfter(next, result)` decides what
+  follows each step. Its Node tests cover every branch.
 
-- **The verdict.** A new pure function,
-  `Model.upstreamVerdict(helpText, optReply, pkgPresent)`, returns `""` when
-  the host is new enough. Otherwise it returns one message naming what to
-  update:
-  - **nixarchy** is new enough when `nixarchy-vm help` names `--detach`,
-    `console` and `set-template`. These are the three subcommands of #762
-    that show in help; `list --json` came in the same release.
-  - **nixarchy-pkg** is new enough when `opt replace` answers with a usage
-    line (`optReplaceSupported`, unchanged). This is checked only when
-    `pkgPresent`, meaning the nixarchy.pkg plugin is installed.
-  - **The message** is, for example: "This plugin needs nixarchy with `nixarchy
-    vm run --detach` (nixarchy#762); update nixarchy." For nixarchy-pkg, the
-    same with #19.
-- **`MicrovmState.qml`.** The two probes stay, since they are the "cheap
-  check" the owner approved.
-  - `features`, `vmJson` and `optReplace` give way to one `upstreamError`
-    string, set from the verdict.
-  - `featureState` loses `vmDetach`, `vmConsole`, `vmSetTemplate` and
-    `optReplace`, and gains `upstreamOk`.
-- **When the verdict is not empty:**
-  - every mutation action is absent (`actionsFor` returns only `copy` when
-    `!s.upstreamOk`);
-  - the list header and the empty text show `upstreamError`;
-  - `c` and `i` say it in the footer instead of opening the form;
-  - listing still works, so the user sees their VMs.
-- **Removed code:**
+### 1. One upstream verdict, gated at the root
+
+- **`Model.upstreamVerdict(helpText, optReply, pkgPresent)`** returns `""`,
+  or one message naming what to update:
+  - **nixarchy** must name `--detach`, `console` and `set-template` in
+    `nixarchy-vm help`;
+  - **nixarchy-pkg** must answer `opt replace` with a usage line, and only
+    when nixarchy.pkg is installed (`pkgPresent`).
+- **Readiness.** `MicrovmState` gains `upstreamReady` and `upstreamError`.
+  - `upstreamReady` turns true only when every required probe has finished:
+    help always; `optProbe` only when `pkgScript` is set. Until then,
+    actions are absent and the footer says "checking nixarchy…".
+  - When ready, `upstreamError` is set from the verdict.
+- **Gating happens where it can't be bypassed:**
+  - `MicrovmState.submit` and `run` refuse when `!upstreamReady ||
+    upstreamError`, and say why;
+  - `MicrovmView.openForm` refuses the same way. That covers `c`, `i`, IPC
+    `create` (`Panel.qml:69`) and the menu's `{"create": true}`
+    (`Menu.qml:66`);
+  - `actionsFor` returns only `copy` when `!s.upstreamOk`.
+- **Listing on an old host.** The text parsers are removed. On nixarchy
+  older than #762, the disposable list cannot be read, so it shows
+  `upstreamError` and no disposable rows.
+  - Permanent rows (systemd and `apps.nix`) still show.
+  - `listProcess` treats non-JSON output on exit 0 as "too old".
+  - `upstreamError` takes priority over `listError` in `summaryText` and
+    `emptyText`.
+
+  This replaces the first draft's "listing still works", which could not be
+  true without the parser.
+- **Removed:**
   - the text fallbacks in `parseVmList` and `parseTemplates`
-    (`Model.js:210-280`). Output that is not JSON becomes a list error,
-    which B2's "VM list failed" path shows;
-  - `startTerminal`, both from the actions (`Model.js:1412`, `1415`) and
-    from `MicrovmState.qml:379-386`, plus `runTerminalArgv`;
-  - the `#762` and `#19` reasons in `hiddenReason` (`Model.js:1488-1504`);
-  - `detectFeatures`. Its regexes move into `upstreamVerdict`.
-- **What stays:** the #843 detection (`serviceHeals`), because #843 is still
-  open.
+    (`Model.js:210-280`);
+  - `detectFeatures`, whose regexes move into the verdict;
+  - the `features`, `vmJson` and `optReplace` flags;
+  - `startTerminal` and `runTerminalArgv`, along with every leftover:
+    `MicrovmView.qml:238`, `:776`; `VmList.qml:130-131`;
+    `MicrovmState.qml:364-365`, `:379-386`; the `statusJson` fields
+    `:491-494`;
+  - the #762 and #19 reasons in `hiddenReason` (`Model.js:1488-1504`).
+- **Kept:** detection of #843.
 
-### 2. Create starts the VM (disposable)
+### 2. Create starts the VM, and shows the build
 
-- **A new form field** `startNow` (`widget: "bool"`, label "Start it now",
-  disposable only), default `true` in `emptyForm`.
-  - It is not an agent field, so `schema.json` and `AGENT_FIELDS` are
-    unchanged.
-  - It is not part of an edit.
-- **`MicrovmState.submit`.** For a disposable create with `startNow`, it
-  records `startAfter = name` and runs the create as today.
-  - In `actionProcess.onExited` (`:680-712`), on success, with an empty
-    queue and `startAfter` set, it calls `startStream` for that VM in the
-    same handler. There is no `Qt.callLater`, so `mutating` never drops
-    between the create and the start.
-  - `startStream` takes the lock itself.
-  - On failure, `startAfter` is cleared and nothing starts.
-- **A failed start** shows in the stream log and the hint line, as any
-  failed stream does today. The row shows as stopped (the next poll), and
-  nothing is retried.
-- **Tests:**
-  - `emptyForm("disposable").startNow === true`;
-  - `visibleFields` shows `startNow` only for a disposable create;
-  - a new `Model.startAfterCreate(form)` returns the name, or `""` for an
-    edit, a permanent form, or `startNow: false`.
+- **A new form field** `startNow` (`bool`, "Start it now", disposable create
+  only), default `true`. It is not an agent field, and not part of an edit.
+- **Submitting.** `MicrovmState.submit(form, owner)` sets
+  `next = {kind: "stream", name}` when `Model.startAfterCreate(form)` names
+  the VM, then runs the create.
+- **After the create.** On success, `advance()` calls
+  `beginStream(Model.runDetachArgv(name), "run " + name)`, which is the same
+  argv as `s` today. On failure, nothing starts.
+- **The build log opens.** For create-and-start, `MicrovmView.submitForm`
+  goes to `setMode("log")`, as `s` does (`MicrovmView.qml:243`), instead of
+  `"list"`. The log follows the create's output first, then the stream's.
+- **A failed start** shows in the log and the hint line, the row reads
+  stopped, and nothing is retried.
 
 ### 3. Delete handles a running disposable VM
 
-- **The reason it can't be a plain queue.** `nixarchy vm stop` runs
-  `microvm-shutdown`, which asks the guest to power down and returns at once
-  (`nixarchy-vm`, `stop_vm`), and `rm` refuses a running VM. So the delete
-  becomes a three-part action under one lock:
-  1. **stop:** `stop` runs through `actionProcess`.
-  2. **wait:** on success, `MicrovmState` enters `removeWait = {name,
-     since}`, and `mutating` includes `removeWait !== null`. A 2 s timer
-     reruns the list.
-     - When the VM shows as stopped, it runs `rm` (`rmVmArgv`), and the
-       wait ends.
-     - At 30 s, `stop` is sent once more. This was observed live on
-       2026-11-16: a guest still booting ignored the first power-down, and
-       the second one stopped it.
-     - At 90 s, the wait ends with
-       `lastError = "<name> did not stop within 90 s; nothing was deleted"`.
-  3. **rm**, under the same lock.
-- **`removeMessage`** (`Model.js:1518`) for a running disposable VM says:
-  "Stop and delete <name>, and everything in <dir>?" The question is asked
-  once, through the existing `ask`.
-- **`X` (abandon)** also ends `removeWait`, with "gave up waiting for <name>
-  to stop; nothing was deleted".
-- **Tests:**
-  - `removeMessage` for running and for stopped;
-  - a new `Model.removeWaitStep(state, rows, now)`, which returns `"rm"`,
-    `"resend"`, `"timeout"` or `"wait"`.
+- **The steps.** `remove(row)` on a running disposable VM runs `stop` with
+  `next = {kind: "wait", name, since: now, resent: false}`.
+- **The wait.** `advance()` for a `wait` step starts a 2 s single-shot timer.
+  On each tick, `Model.removeWaitStep(next, list, now)` decides:
+  - **`"rm"`** once a *fresh, successful* list shows the VM stopped. Fresh
+    means a list read that started after the stop; a failed read retains old
+    rows (`MicrovmState.qml:527`), so it never counts. Then `next = {kind:
+    "rm", name}`, and `advance()` launches `rmVmArgv`.
+  - **`"resend"`** once, at 30 s with `resent` false. It sends `stop` again
+    and sets `resent: true`. A failing resend is ignored: the guest may just
+    have gone, and `microvm-shutdown` then has no socket.
+  - **`"timeout"`** at 90 s. `lastError` reads "<name> did not stop within
+    90 s; nothing was deleted", and `next = null`.
+  - **`"wait"`** otherwise. The list is refreshed, and the timer restarts.
+- **Polling.** This is the one exception to "nothing polls while every
+  surface is closed". A stop-and-delete in progress polls the list until it
+  finishes, for at most 90 s. AGENTS.md records it.
+- **The question.** `removeMessage` for a running disposable VM says: "Stop
+  and delete <name>, and everything in <dir>?" It is asked once.
+- **Tests:** `removeWaitStep` covers fresh vs stale, stopped, 30 s,
+  resent, and 90 s; plus `removeMessage` for running and for stopped.
 
 ### 4. One key per job
 
-- `openForm(kind, field)` in `MicrovmView.qml` takes the field to start on:
-  - `c`, IPC `create` (`Panel.qml`) and the menu's `{"create": true}`
-    (`Menu.qml:66`) start at `"name"`;
+- `openForm(kind, field)`:
+  - `c`, IPC `create` and `{"create": true}` start at `"name"`;
   - `i` starts at `"describe"`.
-- The cursor index comes from a new `Model.fieldIndexOf(fields, key)`, with
-  a test. `CreateForm.start(kind, field)` passes it on.
+- `Model.fieldIndexOf(fields, key)` returns 0 when the key is absent. It
+  has a test.
 
 ### 5. A short permanent form
 
-- **A new UI-only field** `advanced` (`widget: "bool"`, label "SSH and
-  shares", permanent only), default `false`.
-- **`visibleFields(form, state, errors)`** hides `sshPort`, `sshKey` and
-  `shares` unless one of these holds:
-  - `form.advanced`;
-  - any of the three is non-empty in `form`;
-  - `errors` names one of them.
-
-  The third argument is optional, and every caller passes `check.errors`.
-  So an edit (`formFromRow`), an agent reply and a refused Enter always show
-  them, as the intent requires.
-- **`advanced` is never emitted** into the snippet: `machineSnippet` reads
-  only its own keys, which are unchanged.
-- **Tests:** each of those three cases shows the fields, and an empty new
-  permanent form hides them.
+- **A new UI-only field** `advanced` (`bool`, "SSH and shares", permanent
+  only), default `false`. `visibleFields(form, state)` hides `sshPort`,
+  `sshKey` and `shares` unless `form.advanced` is set.
+- **`advanced` turns true by itself** whenever there is something to see,
+  so the switch always matches what is shown (agy):
+  - `formFromRow` sets it when the line has a port, a key or shares;
+  - `applyAgentReply` sets it when the reply set any of the three;
+  - `CreateForm.submit` sets it on a refused Enter when `check.errors`
+    names any of the three.
+- **`advanced` is never part of the snippet**, so the grammar is unchanged.
+- **Tests:**
+  - `formFromRow` with and without SSH;
+  - `applyAgentReply` with a port;
+  - `visibleFields` with `advanced` true and false.
 
 ### 6. "Apply now?" after a permanent create or edit
 
-- **The signal.** When `actionProcess` drains with no failure,
-  `pendingVerb` is `creating` or `editing`, and the key is `permanent:`,
-  `MicrovmState` emits `permanentWritten(name)`.
-- **Who asks.** A `MicrovmView` that is open, in list mode, and owns the
-  submit asks:
-
-  > Apply now? nixarchy-apply rebuilds the whole system from apps.nix, in a
-  > terminal.
-
-  The existing `ask` (default No) handles it, and Yes calls `apply()`.
-  - The owner is the surface that called `submitForm`. The same `surface`
-    from #46/B9 is reused: `MicrovmState.submit(form, owner)` records it.
-  - A delete never asks.
-- **Tests:** a new `Model.offerApply(verb, key, failed)`, which returns a
-  bool, covers create and edit (true), delete and disposable (false), and a
-  failure (false).
+- **The signal.** `MicrovmState` emits `permanentWritten(name, owner)` when
+  a permanent create or edit finishes with no failure.
+  `Model.offerApply(verb, key, failed)` decides it, with a test.
+- **The question.** `MicrovmView` gains `property bool opened`. `Panel.qml`
+  and `Menu.qml` bind it to their own `opened`, because a keep-loaded view
+  is visible even when closed.
+  - The view asks only when `opened && owner === root.surface &&
+    !root.confirmOpen`.
+  - It uses `ask(..., "Apply now? nixarchy-apply rebuilds the whole system
+    from apps.nix, in a terminal.", "Apply")`. The default answer is No, and
+    Yes calls `apply()`.
+- **Deletes never ask.**
 
 ### 7. Words
 
-- **The agent prompt** (`Model.js:1564`) drops "only while attached":
-  disposable VMs run detached now.
+- **The agent prompt** (`Model.js:1564`) drops "only while attached".
 - **AGENTS.md:**
-  - "Every `nixarchy vm` feature is detected, not assumed" becomes "The
-    plugin requires nixarchy with #762, and nixarchy-pkg with #19 when
-    nixarchy.pkg is installed. One verdict says what to update. #843 is
-    still detected";
-  - the #46 sentence about the untracked terminal start is removed, since
-    there is no terminal start any more;
-  - "One mutation at a time" adds that create-and-start and stop-and-delete
-    hold the lock throughout.
-- **README key tables:**
-  - `c` (at the name), `i` (at the description);
-  - `x` on a running disposable VM;
-  - the "Start it now" and "SSH and shares" switches;
-  - the upstream note.
-- **`docs/usage.md`:** the create, delete and apply flows, and "too old".
-- **`docs/upstream.md`:** #762 and #19 become requirements, not optional;
-  #843 stays optional.
-- **`manifest.json`:** the description is checked for "detected" wording.
+  - the "detected, not assumed" rule becomes the stated minimum and the one
+    verdict, with #843 still detected;
+  - #46's sentence about the untracked terminal start is removed;
+  - "One mutation at a time" adds that a create-and-start and a
+    stop-and-delete hold the lock throughout;
+  - "Nothing polls while every surface is closed" adds the bounded
+    exception: a stop-and-delete in progress, at most 90 s.
+- **README key tables, `docs/usage.md` and `docs/upstream.md`:** as the
+  intent lists them. `manifest.json` is checked for "detected" wording.
 
 ## Alternatives rejected
 
-- **Queue `[stop, rm]` directly.** `stop` returns before the VM is down, so
-  `rm` refuses it. This was observed live with `t1`.
-- **`systemctl --user stop nixarchy-vm-<name>`** for a synchronous stop.
-  AGENTS.md says disposable state is touched only through `nixarchy-vm`.
-- **Upstream `nixarchy vm stop --wait`** (or `rm --force`). It is the
-  cleaner long-term fix, but this task would then depend on a new upstream
-  release. It is noted for the agent-sandbox upstream issue (roadmap A1).
-- **Drop detection entirely and let the first command fail.** The owner
-  chose one clear verdict.
-- **Ctrl+Enter for "create stopped"** instead of a switch. It is invisible,
-  and it isn't on the shortcut sheet without extra keys. A switch is data in
-  the form, and it is testable.
-- **"Apply now?" after a delete.** The owner's decision is create and edit
-  only.
+- **Calling `startStream` from inside `onExited`.** Its public busy check
+  rejects its own continuation, and `actionProcess.running` may still be
+  true there. That is why the queue uses `Qt.callLater` (Codex, agy).
+- **Queueing `[stop, rm]`.** `stop` returns before the VM is down, as
+  observed with `t1`.
+- **`systemctl --user stop`.** AGENTS.md routes disposable VMs only through
+  `nixarchy-vm`.
+- **Upstream `nixarchy vm stop --wait`.** Cleaner, but it needs a release.
+  It is noted for roadmap A1.
+- **A `visibleFields` that also looks at values and errors.** The switch
+  would disagree with what is shown, and the fields would vanish mid-typing
+  (agy).
+- **Ctrl+Enter for "create stopped".** It is invisible. A switch is data,
+  and testable.
 
 ## Risks
 
-- **A VM may never show as stopped.** For example, the guest hangs on
-  shutdown. Then the 90 s wait ends with an error and nothing is deleted. The
-  lock is held for up to 90 s, which `X` can end.
-- **Older hosts lose every action** until they update. That is intended, and
-  the verdict says what to update.
-- **`startAfter` and a closed surface.** The stream runs whether or not a
-  surface is open, as `s` does today. Polling rules are unchanged.
-- **Field count.** `startNow` and `advanced` add fields, so the shortcut
-  sheet and the form-height budget change. Check the menu and the popup at
-  text size 12.
-- **Merge order.** This rewrites lines #47 touches, so it is rebased after
-  #47 merges.
+- **A guest that never stops:** the action holds the lock for up to 90 s,
+  `X` can end it after 60 s, and nothing is deleted.
+- **Older hosts lose their actions, and their disposable list,** until they
+  update. That is intended, and the message says what to update.
+- **The `next` handoffs are QML wiring.** Only `continueAfter`,
+  `removeWaitStep` and `startAfterCreate` are unit-tested. The handoffs
+  themselves are verified live.
+- **Two new form fields** change the form's height. Check the popup and the
+  menu at text size 12.
+- **Merge order:** after #47.
 
 ## Verification
 
-- `node tests/run.js` passes with the new tests: `upstreamVerdict` (old
-  nixarchy, old nixarchy-pkg, no nixarchy.pkg, current), `startAfterCreate`,
-  `removeWaitStep`, `fieldIndexOf`, the `visibleFields` cases, `offerApply`
-  and `removeMessage`. Existing tests that relied on the removed text parsers
-  or feature flags are updated, and each one is named in its commit.
-- `nix flake check`, `--all-systems --no-build`, `nix build`, and a
+- `node tests/run.js` passes with the new tests:
+  - `upstreamVerdict`, `continueAfter`, `startAfterCreate`,
+    `removeWaitStep`, `fieldIndexOf`, `offerApply`;
+  - the `advanced` cases, and `removeMessage`.
+
+  Existing tests that relied on the parsers or the flags are updated, and
+  each is named in its commit.
+- `nix flake check`, `--all-systems --no-build`, `nix build` and a
   fresh-clone `omarchy plugin validate` all pass.
 - Live, by AGENTS.md "Verifying live", with an ai-mirror grant and the
-  owner's desktop free:
-  1. `c` opens at the name. Type `t1`, then Enter: the build streams and
-     `t1` runs.
-  2. `x` on running `t1`, then yes: the footer shows the wait, `t1` stops,
-     and it is deleted.
-  3. `c`, name `t2`, "Start it now" off, Enter: `t2` is created stopped.
-     Then `rm` it.
+  owner's desktop free. `apps.nix` is snapshotted first.
+  1. `c` opens at the name. Type `t1`, then Enter: the log opens, the
+     create's output is followed by the build, and `t1` runs. While it
+     builds, `s` on another row is refused as busy (the lock holds across the
+     handoff).
+  2. `x` on running `t1`, then yes. The footer shows the wait, `t1` stops,
+     and it is deleted. Close the menu during the wait: the delete still
+     completes, and polling stops afterwards (`polls` in `status` stops
+     rising).
+  3. `c`, name `t2`, "Start it now" off: `t2` is created stopped. Then
+     `rm` it.
   4. `c`, Kind permanent: SSH and shares are hidden, and the switch shows
-     them. Enter, then the review, then write `p1`: "Apply now?" is asked.
-     Answer No. Then remove `p1` with `nixarchy-opt-remove`.
-  5. `i` opens at the description.
+     them. Enter, the review, write `p1`: "Apply now?" is asked once, by this
+     surface only. Answer No, then remove `p1`.
+  5. `i` opens at the description. IPC `create` opens at the name.
   6. The bar is healthy, there are no plugin warnings, and `apps.nix`
      matches its snapshot.
-- The too-old path can't be reproduced on this host. It is covered by the
-  `upstreamVerdict` tests only.
+- The too-old path is covered by the `upstreamVerdict` tests. It cannot be
+  reproduced on this host.
