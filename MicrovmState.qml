@@ -117,6 +117,10 @@ Singleton {
   property bool reachable: true
   property bool loading: false
   property bool everLoaded: false
+  // A poll that failed after a good one keeps its rows and says so.
+  property bool listOk: false
+  property bool vmsStale: false
+  property string listError: ""
   property string lastError: ""
   // How many list queries have run: the `status` hook reports it, so "does it
   // poll while closed" can be measured from outside rather than assumed.
@@ -470,13 +474,14 @@ Singleton {
       agent: root.agentId,
       agentSupported: root.agent !== "",
       schemaLoaded: root.schemaText !== "",
-      stale: Model.staleList({ units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
+      stale: Model.staleList({ vms: root.vmsStale, units: root.unitsStale, pending: root.pendingStale, help: root.helpStale }),
       command: root.pendingCommand,
       pid: actionProcess.processId,
       agentError: root.agentError,
       templates: Model.templateNames(root.templates),
       rows: root.allRows.map(function(r) { return r.key + " " + r.runtime + " " + r.ownership + (r.pending ? " pending" : "") }),
-      lastError: root.lastError
+      lastError: root.lastError,
+      listError: root.listError
     })
   }
 
@@ -491,10 +496,21 @@ Singleton {
       root.loading = false
       root.everLoaded = true
       if (code !== 0) {
-        root.reachable = false
-        root.vms = []
+        if (!root.listOk && Model.trim(listErr.text) === "") {
+          root.reachable = false
+          root.vms = []
+          root.vmsStale = false
+          root.listError = ""
+        } else {
+          root.reachable = true
+          root.vmsStale = root.listOk
+          root.listError = Model.listFailure(listErr.text, code)
+        }
         return
       }
+      root.listOk = true
+      root.vmsStale = false
+      root.listError = ""
       root.reachable = true
       root.vmJson = Model.isJsonList(listOut.text)
       root.vms = Model.parseVmList(listOut.text)

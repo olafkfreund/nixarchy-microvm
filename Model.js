@@ -661,7 +661,12 @@ function counts(rows) {
   return out
 }
 
-function summaryText(rows, reachable) {
+function listFailure(stderr, code) {
+  return errorText(stderr) || "exit " + code
+}
+
+function summaryText(rows, reachable, listError) {
+  if (listError) return "VM list failed: " + listError
   if (!reachable) return "nixarchy-vm not found"
   var c = counts(rows)
   if (c.total === 0) return "No VMs"
@@ -678,6 +683,7 @@ function emptyText(state) {
   if (!state.everLoaded) return "Loading…"
   if (!state.reachable) return "nixarchy-vm is not on PATH"
   if (state.filtered) return "Nothing matches that filter"
+  if (state.listError) return "VM list failed: " + state.listError
   if (!state.showStopped) return "No running VMs"
   return "No VMs yet — press c to create one"
 }
@@ -1736,6 +1742,7 @@ function probeStale(now, probedAt) {
 function staleList(flags) {
   var f = flags || {}
   var out = []
+  if (f.vms) out.push("vms")
   if (f.units) out.push("units")
   if (f.pending) out.push("pending")
   if (f.help) out.push("help")

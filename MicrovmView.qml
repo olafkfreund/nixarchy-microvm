@@ -382,7 +382,7 @@ FocusScope {
 
         PanelHero {
           title: "MicroVMs"
-          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable)
+          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError)
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconOpacity: MicrovmState.counts.running > 0 ? 1.0 : 0.5
@@ -635,6 +635,7 @@ FocusScope {
             text: Model.emptyText({
               everLoaded: MicrovmState.everLoaded,
               reachable: MicrovmState.reachable,
+              listError: MicrovmState.listError,
               filtered: MicrovmState.rows.length > 0,
               showStopped: MicrovmState.showStopped
             })
