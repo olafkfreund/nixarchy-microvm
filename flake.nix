@@ -1,5 +1,5 @@
 {
-  description = "nixarchy.microvm -- NixOS MicroVMs in the Omarchy shell: a bar widget and a full-screen keyboard menu";
+  description = "nixarchy.microvm -- NixOS MicroVMs in the Omarchy shell: a bar widget and a keyboard menu";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
