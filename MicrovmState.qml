@@ -70,7 +70,6 @@ Singleton {
   property string agentId: ""
   property var templates: []
   property var sshKeys: []
-  property bool probed: false
 
   readonly property var featureState: ({
     mutating: root.mutating,
@@ -92,7 +91,6 @@ Singleton {
   property double probedAt: 0
 
   function probe() {
-    root.probed = true
     root.probedAt = Date.now()
     if (!templatesProcess.running) { templatesProcess.command = Model.templatesArgv(); templatesProcess.running = true }
     if (!helpProcess.running) { helpProcess.command = Model.helpArgv(); helpProcess.running = true }
@@ -623,8 +621,10 @@ Singleton {
     printErrors: false
     onLoaded: {
       root.pkgScript = path
-      optProbe.command = Model.optProbeArgv(path)
-      optProbe.running = true
+      if (!optProbe.running) {
+        optProbe.command = Model.optProbeArgv(path)
+        optProbe.running = true
+      }
     }
     onLoadFailed: { root.pkgScript = ""; root.optReplace = false }
   }
