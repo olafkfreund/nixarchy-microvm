@@ -943,7 +943,9 @@ function validateForm(form, rows, templates, hostHome) {
   if (!isDescribe(f.describe)) errors.describe = "At most 500 characters, no line breaks"
 
   if (!name) errors.name = "A name is required"
-  else if (!isVmName(name, kind)) {
+  else if (!(f.editing === true
+    ? (kind === "permanent" ? isNixAttrName(name) : isReportedName(name))
+    : isVmName(name, kind))) {
     errors.name = kind === "permanent"
       ? "Lower-case letters, digits and -, starting with a letter, at most 32"
       : "Letters, digits, _ and -, starting with a letter, at most 64"
@@ -1130,6 +1132,20 @@ function firstErrorIndex(fields, errors) {
     if (errors && errors[fields[i].key]) return i
   }
   return -1
+}
+
+function hiddenFieldError(fields, errors) {
+  for (var key in errors || {}) {
+    var visible = false
+    for (var i = 0; i < (fields || []).length; i++) {
+      if (fields[i].key === key) { visible = true; break }
+    }
+    if (visible) continue
+    for (var j = 0; j < FORM_FIELDS.length; j++) {
+      if (FORM_FIELDS[j].key === key) return FORM_FIELDS[j].label + ": " + errors[key]
+    }
+  }
+  return ""
 }
 
 function templatesMatching(templates, query) {

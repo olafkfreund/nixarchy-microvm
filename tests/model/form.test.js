@@ -97,6 +97,10 @@ test("name rules differ per kind, and a name in use is refused only on create", 
   eq(errors({ name: "bob" }), {})                       // but not as a permanent one
   ok(errors({ name: "p1" }).name)
   eq(Model.validateForm(Object.assign(form({ name: "p1" }), { editing: true }), rows, TEMPLATES, HOME).errors, {})
+  eq(errors({ name: "Old_VM", editing: true }), {})
+  eq(errors({ name: "1box", editing: true }, "disposable"), {})
+  ok(errors({ name: "Old_VM" }).name)
+  ok(errors({ name: "1box" }, "disposable").name)
 })
 
 test("template must come from the parsed list", () => {
@@ -259,6 +263,9 @@ test("firstErrorIndex and formSummary", () => {
   eq(Model.firstErrorIndex(fields, { shares: "x", name: "y" }), fields.findIndex(f => f.key === "name"))
   eq(Model.firstErrorIndex(fields, { shares: "x" }), fields.findIndex(f => f.key === "shares"))
   eq(Model.firstErrorIndex(fields, {}), -1)
+  const editFields = Model.visibleFields(form({ editing: true }), {})
+  eq(Model.hiddenFieldError(editFields, { name: "A name is required" }), "Name: A name is required")
+  eq(Model.hiddenFieldError(fields, { name: "A name is required" }), "")
   eq(Model.formSummary(form()), "create t1 (permanent, shell)")
   eq(Model.formSummary(Model.formFromRow(Model.rowByName(rows, "disposable", "alice"))), "edit alice (disposable, shell)")
   eq(Model.optPath("p1"), "programs.nixarchy.services.microvm.machines.p1")
