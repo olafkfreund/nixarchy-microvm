@@ -1673,7 +1673,7 @@ function applyAgentReply(reply, form) {
 
 function sshKeysArgv(home) {
   var h = trim(home).replace(/\/+$/, "")
-  return h ? ["find", h + "/.ssh", "-maxdepth", "1", "-name", "*.pub", "-printf", "%f\\t", "-exec", "cat", "{}", ";"] : null
+  return h ? ["find", h + "/.ssh", "-maxdepth", "1", "-name", "*.pub", "-printf", "\\n%f\\t", "-exec", "cat", "{}", ";"] : null
 }
 
 function parseSshKeys(raw) {

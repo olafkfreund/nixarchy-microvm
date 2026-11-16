@@ -96,6 +96,8 @@ test("parseSshKeys lists ~/.ssh/*.pub lines that are keys, by file", () => {
   eq(Model.parseSshKeys(""), [])
   eq(Model.sshKeysArgv("/home/user/")[1], "/home/user/.ssh")
   eq(Model.sshKeysArgv(""), null)
+  ok(Model.sshKeysArgv("/h").includes("\\n%f\\t"), "newline before each name, so a key file without a final newline cannot swallow the next")
+  eq(Model.parseSshKeys("\na.pub\tssh-ed25519 AAAAC3Nza\nb.pub\tssh-rsa AAAAB3Nza c\n").length, 2)
 })
 
 test("writerError reads nixarchy-pkg's {ok:false,error} and nothing else", () => {
