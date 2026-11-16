@@ -1639,9 +1639,14 @@ function commitStats(state, side, parsed, running, atMs) {
     if ((b.indexOf("microvm@") === 0 ? "system" : "user") !== side) base[b] = old.base[b]
   if (parsed) for (var unit in parsed) {
     if (!keep[unit] || (unit.indexOf("microvm@") === 0 ? "system" : "user") !== side) continue
+    var prev = old.base[unit]
+    // A restart (new start time, or a counter that went back) starts a fresh
+    // history: samples from the previous run are not this run's (#53 review).
+    var fresh = !prev || prev.since !== parsed[unit].since ||
+      (prev.cpuNs !== null && parsed[unit].cpuNs !== null && parsed[unit].cpuNs < prev.cpuNs)
     stats[unit] = parsed[unit]
-    history[unit] = pushSample(old.history[unit], cpuPercent(old.base[unit], { cpuNs: parsed[unit].cpuNs, atMs: atMs }))
-    base[unit] = { cpuNs: parsed[unit].cpuNs, atMs: atMs }
+    history[unit] = pushSample(fresh ? [] : old.history[unit], fresh ? null : cpuPercent(prev, { cpuNs: parsed[unit].cpuNs, atMs: atMs }))
+    base[unit] = { cpuNs: parsed[unit].cpuNs, atMs: atMs, since: parsed[unit].since }
   }
   return { stats: stats, history: history, base: base }
 }
@@ -1652,10 +1657,35 @@ function cpuTrend(history) {
   return count >= 2 ? history : []
 }
 
+// The latest sample only: an unknown reading now is "—", never an older figure (#53 review).
 function cpuText(history) {
-  for (var i = (history || []).length - 1; i >= 0; i--)
-    if (history[i] !== null) return Math.round(history[i]) + "%"
-  return "—"
+  var h = history || []
+  var last = h.length ? h[h.length - 1] : null
+  return last === null || last === undefined ? "—" : Math.round(last) + "%"
+}
+
+// The status line under a card's template, as VmList draws it (#53 review: out of QML).
+function cardStatusText(row, rowPending, pendingVerb) {
+  if (!row) return ""
+  if (rowPending) return pendingVerb + "…"
+  return row.up && !row.pending ? "" : (row.status || "")
+}
+
+// Sparkline points for a trend in a w x h box: scale is max(100, highest), so
+// 100% (one core) is full height; a null sample breaks the line (#53 review).
+function sparkPoints(trend, w, h) {
+  var t = trend || []
+  if (t.length < 2 || !(w > 0) || !(h > 0)) return []
+  var top = 100
+  for (var i = 0; i < t.length; i++) if (t[i] !== null && t[i] > top) top = t[i]
+  var out = []
+  var pen = false
+  for (var j = 0; j < t.length; j++) {
+    if (t[j] === null) { pen = false; continue }
+    out.push({ x: j * w / (t.length - 1), y: h - 1 - (h - 2) * t[j] / top, move: !pen })
+    pen = true
+  }
+  return out
 }
 
 function formatMemory(bytes) {
@@ -1682,7 +1712,9 @@ function overviewCard(row, stats, history, nowMs) {
   var samples = history && history[id]
   return { running: !!running, memText: stat ? formatMemory(stat.mem) : "—",
     configText: config, uptimeText: stat ? formatUptime(stat.since, nowMs) : "—",
-    cpuTrend: stat ? cpuTrend(samples) : [], cpuText: stat ? cpuText(samples) : "—" }
+    cpuTrend: stat ? cpuTrend(samples) : [], cpuText: stat ? cpuText(samples) : "—",
+    vitalsText: running ? "up " + (stat ? formatUptime(stat.since, nowMs) : "—") + " · " + (stat ? formatMemory(stat.mem) : "—") : "",
+    cpuLabel: "cpu " + (stat ? cpuText(samples) : "—") }
 }
 
 function overviewSummaryText(rows, stats, meminfo, state) {

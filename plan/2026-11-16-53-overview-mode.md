@@ -393,3 +393,44 @@ self-contained: every contract that step 1 implements is copied here.
     `uptimeText` and `memText`, and the sparkline scale `max(100,
     highest sample)`.
   - There is no logic beyond that.
+- **Final review (Opus, Codex, agy).** All three found the hold sound and
+  nothing reading while closed or in list mode. The confirmed findings, fixed
+  in one commit:
+  1. **Old numbers after a stop and start** (all three). A side with no
+     running VMs never committed, and a restart reused its history and
+     baseline.
+     - `readStats()` now commits an empty result for a side with no running
+       units.
+     - `commitStats` starts a fresh history when the start time changes, or
+       when the counter goes back. The baseline now keeps `since`, and the
+       assertion in "commitStats succeeds without mutating prior state" is
+       updated to match.
+  2. **Two reads per poll** (Opus, agy). `readStats()` is now called only at
+     the end of `listProcess.onExited`, not from `unitsProcess` as well. This
+     changes step 2's "both handlers".
+  3. **A late read after a close and reopen** (Codex). A `statsGen` counter
+     is bumped on every open and close. Each read records the generation it
+     started in, and `commitSide` drops a result from an older one.
+     `meminfoFile.onLoaded` also requires `wantStats`.
+  4. **The CPU text showed an old figure** (Codex). `cpuText` now shows the
+     *latest* sample, or "—". This replaces the plan's "last non-null", and
+     its test is updated.
+  5. **The card was 8 px too short** (Opus, agy). Its padding is
+     `2 * Style.spacing.xl`, matching the margins.
+  6. **The cursor after a view switch** (Opus, agy). Both views scroll to the
+     cursor when they become visible.
+  7. **Logic in QML** (agy).
+     - The status line moved to `Model.cardStatusText`, and the sparkline
+       maths to `Model.sparkPoints`, both tested.
+     - `overviewCard` gains `vitalsText` and `cpuLabel`, so QML only places
+       strings.
+     - This supersedes the step 3 note about the "up …" line and the scale
+       staying in QML.
+  8. **The docs** no longer mention a state dot, which the cards do not
+     have.
+  - **New tests:** a restart, a side going empty, the status line, the
+    sparkline, and a summary with every VM readable.
+  - **Not changed:**
+    - Opening straight into the form with the overview as the default can
+      start one read. The generation check drops its result (agy, low).
+    - `holdsStats` stays a plain property (Opus, low).

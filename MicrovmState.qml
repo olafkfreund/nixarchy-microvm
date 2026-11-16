@@ -46,6 +46,7 @@ Singleton {
   readonly property bool wantStats: active && statsHolders > 0
 
   onWantStatsChanged: {
+    statsGen += 1
     if (wantStats) readStats()
     else { stats = {}; history = {}; base = {}; meminfo = null }
   }
@@ -81,20 +82,33 @@ Singleton {
     return out
   }
 
+  // Bumped whenever the overview opens or closes; a read started under an
+  // older generation is dropped when it ends (#53 review: close, reopen, late read).
+  property int statsGen: 0
+
   function readStats() {
     if (!wantStats) return
-    var sides = [[false, statsUserProcess], [true, statsSystemProcess]]
+    var sides = [[false, statsUserProcess, "user"], [true, statsSystemProcess, "system"]]
     for (var i = 0; i < sides.length; i++) {
-      var argv = Model.statsArgv(runningUnits(sides[i][0]), sides[i][0])
-      if (argv && !sides[i][1].running) { sides[i][1].command = argv; sides[i][1].running = true }
+      var units = runningUnits(sides[i][0])
+      if (units.length === 0) {
+        // Nothing runs on this side: clear it now, so a VM that starts again
+        // never shows the previous run's numbers (#53 review).
+        var r = Model.commitStats({ stats: stats, history: history, base: base }, sides[i][2], {}, [], Date.now())
+        stats = r.stats; history = r.history; base = r.base
+        continue
+      }
+      var argv = Model.statsArgv(units, sides[i][0])
+      if (argv && !sides[i][1].running) { sides[i][1].gen = statsGen; sides[i][1].command = argv; sides[i][1].running = true }
     }
     meminfoFile.reload()
     statsReads += 1
   }
 
-  function commitSide(side, out, code) {
-    // A read that ends after the overview closed must not refill what closing cleared.
-    if (!wantStats) return
+  function commitSide(side, out, code, gen) {
+    // A read that ends after the overview closed, or that started before a
+    // close and reopen, must not refill what closing cleared.
+    if (!wantStats || gen !== statsGen) return
     var r = Model.commitStats({ stats: stats, history: history, base: base }, side,
       code === 0 ? Model.parseUnitStats(out, Date.now()) : null,
       runningUnits(side === "system"), Date.now())
@@ -704,27 +718,28 @@ Singleton {
     onExited: function(code) {
       if (code === 0) { root.units = Model.parseUnits(unitsOut.text); root.unitsStale = false }
       else root.unitsStale = true
-      root.readStats()
     }
   }
 
   Process {
     id: statsUserProcess
+    property int gen: 0
     stdout: StdioCollector { id: statsUserOut; waitForEnd: true }
-    onExited: function(code) { root.commitSide("user", statsUserOut.text, code) }
+    onExited: function(code) { root.commitSide("user", statsUserOut.text, code, gen) }
   }
 
   Process {
     id: statsSystemProcess
+    property int gen: 0
     stdout: StdioCollector { id: statsSystemOut; waitForEnd: true }
-    onExited: function(code) { root.commitSide("system", statsSystemOut.text, code) }
+    onExited: function(code) { root.commitSide("system", statsSystemOut.text, code, gen) }
   }
 
   FileView {
     id: meminfoFile
     path: root.wantStats ? "/proc/meminfo" : ""
     printErrors: false
-    onLoaded: root.meminfo = Model.parseMeminfo(text())
+    onLoaded: if (root.wantStats) root.meminfo = Model.parseMeminfo(text())
     onLoadFailed: root.meminfo = null
   }
 

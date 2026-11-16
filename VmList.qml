@@ -41,7 +41,7 @@ Item {
   // Model.cardsNaturalHeight, so nothing scrolls inside the body.
   readonly property int lineHeight: Math.ceil(fontSize.caption * 1.5)
   readonly property int cpuSlotHeight: Style.space(28)
-  readonly property int cardHeight: Math.ceil(fontSize.body * 1.6) + 4 * lineHeight + cpuSlotHeight + Style.spacing.xxl
+  readonly property int cardHeight: Math.ceil(fontSize.body * 1.6) + 4 * lineHeight + cpuSlotHeight + 2 * Style.spacing.xl
   readonly property int cellHeight: cardHeight + Style.spacing.md
   readonly property int columns: Model.cardColumns(width, Style.space(large ? 360 : 260))
 
@@ -102,6 +102,8 @@ Item {
     function keepCurrentVisible() {
       if (currentIndex >= 0 && root.cursorFromKeyboard) positionViewAtIndex(currentIndex, ListView.Contain)
     }
+    // Switching back from the overview shows the cursor wherever it moved.
+    onVisibleChanged: if (visible && currentIndex >= 0) Qt.callLater(function() { positionViewAtIndex(currentIndex, ListView.Contain) })
 
     delegate: VmRow {
       required property var model
@@ -133,7 +135,7 @@ Item {
     onCurrentIndexChanged: {
       if (currentIndex >= 0 && root.cursorFromKeyboard) Qt.callLater(keepCurrentVisible)
     }
-    onVisibleChanged: if (visible) Qt.callLater(keepCurrentVisible)
+    onVisibleChanged: if (visible && currentIndex >= 0) Qt.callLater(function() { positionViewAtIndex(currentIndex, GridView.Contain) })
     function keepCurrentVisible() {
       if (currentIndex >= 0 && root.cursorFromKeyboard) positionViewAtIndex(currentIndex, GridView.Contain)
     }
@@ -282,8 +284,7 @@ Item {
       Text {
         width: parent.width
         height: root.lineHeight
-        text: card.rowPending ? root.pendingVerb + "…"
-          : (card.row.up && !card.row.pending ? "" : card.row.status)
+        text: Model.cardStatusText(card.row, card.rowPending, root.pendingVerb)
         textFormat: Text.PlainText
         color: card.rowPending || card.row.pending ? Commons.Color.accent
           : (card.row.failing ? Commons.Color.urgent : root.dim)
@@ -295,7 +296,7 @@ Item {
       Text {
         width: parent.width
         height: root.lineHeight
-        text: card.info.running ? "up " + card.info.uptimeText + " · " + card.info.memText : ""
+        text: card.info.vitalsText
         textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
@@ -329,7 +330,7 @@ Item {
         id: cpuLabel
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        text: "cpu " + card.info.cpuText
+        text: card.info.cpuLabel
         textFormat: Text.PlainText
         color: root.dim
         font.family: root.fontFamily
@@ -350,20 +351,14 @@ Item {
         onPaint: {
           var ctx = getContext("2d")
           ctx.clearRect(0, 0, width, height)
-          var t = trend || []
-          if (t.length < 2) return
-          var top = 100
-          for (var i = 0; i < t.length; i++) if (t[i] !== null && t[i] > top) top = t[i]
+          var pts = Model.sparkPoints(trend, width, height)
+          if (pts.length === 0) return
           ctx.strokeStyle = String(Commons.Color.accent)
           ctx.lineWidth = 1.5
           ctx.beginPath()
-          var pen = false
-          for (var j = 0; j < t.length; j++) {
-            if (t[j] === null) { pen = false; continue }
-            var x = j * width / (t.length - 1)
-            var y = height - 1 - (height - 2) * t[j] / top
-            if (pen) ctx.lineTo(x, y)
-            else { ctx.moveTo(x, y); pen = true }
+          for (var j = 0; j < pts.length; j++) {
+            if (pts[j].move) ctx.moveTo(pts[j].x, pts[j].y)
+            else ctx.lineTo(pts[j].x, pts[j].y)
           }
           ctx.stroke()
         }

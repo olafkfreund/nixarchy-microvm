@@ -166,7 +166,7 @@ by default) so the panel opens there. Both views show the same VMs, and the
 same cursor, mouse, action buttons and keys work in both.
 
 Each card shows:
-- the state dot, the name, and the *disposable* or *permanent* badge;
+- the name, and the *disposable* or *permanent* badge;
 - the template, and where the VM comes from when that matters;
 - the status when the VM is not running cleanly (*stopped*, *not built yet*,
   *pending apply*, *removed, pending apply*, or the verb in progress);
