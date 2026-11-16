@@ -540,6 +540,14 @@ function cardWidth(available, fraction, min, max) {
   return Math.max(lo, Math.min(hi, Math.round(available * fraction)))
 }
 
+function cardColumns(width, minCardWidth) {
+  return minCardWidth > 0 ? Math.max(1, Math.floor(width / minCardWidth)) : 1
+}
+
+function cardsNaturalHeight(count, columns, cellHeight) {
+  return Math.ceil(count / columns) * cellHeight
+}
+
 // The menu card's size and top offset on a screen, in pixels; a floor size
 // while no screen is known (#50).
 function menuGeometry(screenW, screenH, minW, maxW, viewNaturalH, insetX, insetY, gaps) {
@@ -1553,6 +1561,148 @@ function isStopped(vms, name) {
   for (var i = 0; i < list.length; i++)
     if (list[i] && list[i].name === name && list[i].running === true) return false
   return true
+}
+
+function unitFor(row) {
+  if (!row || !isReportedName(row.name)) return ""
+  if (row.kind === "disposable") return "nixarchy-vm-" + row.name + ".service"
+  if (row.kind === "permanent") return "microvm@" + row.name + ".service"
+  return ""
+}
+
+function statsArgv(units, system) {
+  if (!units || !units.length) return null
+  for (var i = 0; i < units.length; i++)
+    if (!/^(nixarchy-vm-|microvm@)[A-Za-z0-9_-]+\.service$/.test(units[i])) return null
+  return ["systemctl"].concat(system ? [] : ["--user"], ["show", "--timestamp=unix", "-p",
+    "Id,ActiveState,MemoryCurrent,CPUUsageNSec,ActiveEnterTimestamp", "--"], Array.prototype.slice.call(units))
+}
+
+function parseUnitStats(text, atMs) {
+  var out = {}
+  var blocks = String(text || "").trim().split(/\n\s*\n/)
+  for (var i = 0; i < blocks.length; i++) {
+    var fields = {}
+    var lines = blocks[i].split(/\r?\n/)
+    for (var j = 0; j < lines.length; j++) {
+      var at = lines[j].indexOf("=")
+      if (at !== -1) fields[lines[j].substring(0, at)] = lines[j].substring(at + 1).trim()
+    }
+    if (fields.ActiveState !== "active" || !fields.Id) continue
+    var mem = fields.MemoryCurrent
+    var cpu = fields.CPUUsageNSec
+    var since = (fields.ActiveEnterTimestamp || "").match(/^@(\d+(?:\.\d+)?)$/)
+    out[fields.Id] = {
+      mem: /^\d+$/.test(mem || "") ? Number(mem) : null,
+      cpuNs: /^\d+$/.test(cpu || "") ? Number(cpu) : null,
+      since: since && Number(since[1]) > 0 ? Number(since[1]) : null,
+      atMs: atMs
+    }
+  }
+  return out
+}
+
+function parseMeminfo(text) {
+  var total = String(text || "").match(/^MemTotal:\s*(\d+)\s+kB\s*$/m)
+  var available = String(text || "").match(/^MemAvailable:\s*(\d+)\s+kB\s*$/m)
+  return total && available ? { totalKiB: Number(total[1]), availableKiB: Number(available[1]) } : null
+}
+
+function cpuPercent(prev, cur) {
+  if (!prev || !cur || prev.cpuNs === null || prev.cpuNs === undefined ||
+      cur.cpuNs === null || cur.cpuNs === undefined) return null
+  var ms = cur.atMs - prev.atMs
+  var ns = cur.cpuNs - prev.cpuNs
+  return ms > 0 && ns >= 0 ? 100 * ns / (ms * 1e6) : null
+}
+
+function pushSample(list, value, cap) {
+  var out = []
+  var old = list || []
+  for (var i = 0; i < old.length; i++) out.push(old[i])
+  out.push(value)
+  var limit = cap === undefined ? 30 : cap
+  return limit > 0 ? out.slice(-limit) : []
+}
+
+function commitStats(state, side, parsed, running, atMs) {
+  var stats = {}, history = {}, base = {}
+  var keep = {}
+  for (var i = 0; i < running.length; i++) keep[running[i]] = true
+  var old = state || { stats: {}, history: {}, base: {} }
+  for (var id in old.stats)
+    if ((id.indexOf("microvm@") === 0 ? "system" : "user") !== side) stats[id] = old.stats[id]
+  for (var h in old.history)
+    if ((h.indexOf("microvm@") === 0 ? "system" : "user") !== side) history[h] = old.history[h]
+  for (var b in old.base)
+    if ((b.indexOf("microvm@") === 0 ? "system" : "user") !== side) base[b] = old.base[b]
+  if (parsed) for (var unit in parsed) {
+    if (!keep[unit] || (unit.indexOf("microvm@") === 0 ? "system" : "user") !== side) continue
+    stats[unit] = parsed[unit]
+    history[unit] = pushSample(old.history[unit], cpuPercent(old.base[unit], { cpuNs: parsed[unit].cpuNs, atMs: atMs }))
+    base[unit] = { cpuNs: parsed[unit].cpuNs, atMs: atMs }
+  }
+  return { stats: stats, history: history, base: base }
+}
+
+function cpuTrend(history) {
+  var count = 0
+  for (var i = 0; i < (history || []).length; i++) if (history[i] !== null) count++
+  return count >= 2 ? history : []
+}
+
+function cpuText(history) {
+  for (var i = (history || []).length - 1; i >= 0; i--)
+    if (history[i] !== null) return Math.round(history[i]) + "%"
+  return "—"
+}
+
+function formatMemory(bytes) {
+  if (bytes === null || bytes === undefined) return "—"
+  return bytes < 1073741824 ? Math.round(bytes / 1048576) + " MiB" :
+    (bytes / 1073741824).toFixed(1) + " GiB"
+}
+
+function formatUptime(sinceSec, nowMs) {
+  if (sinceSec === null || sinceSec === undefined) return "—"
+  var seconds = Math.max(0, nowMs / 1000 - sinceSec)
+  if (seconds < 3600) return Math.floor(seconds / 60) + " min"
+  if (seconds < 86400) return Math.floor(seconds / 3600) + " h"
+  return Math.floor(seconds / 86400) + " d"
+}
+
+function overviewCard(row, stats, history, nowMs) {
+  var id = unitFor(row)
+  var running = row && row.runtime === "running"
+  var stat = running && stats && stats[id]
+  var config = row && row.memory ? "configured " + formatMemory(Number(row.memory) * 1048576) +
+    (row.cores ? " · " + row.cores + " cores" : "") : ""
+  if (row && row.pending) config = running ? "" : config + (config ? " (pending)" : "")
+  var samples = history && history[id]
+  return { running: !!running, memText: stat ? formatMemory(stat.mem) : "—",
+    configText: config, uptimeText: stat ? formatUptime(stat.since, nowMs) : "—",
+    cpuTrend: stat ? cpuTrend(samples) : [], cpuText: stat ? cpuText(samples) : "—" }
+}
+
+function overviewSummaryText(rows, stats, meminfo, state) {
+  if (!state.reachable) return "nixarchy-vm not found"
+  if (state.upstreamError) return state.upstreamError
+  if (state.listError) return "VM list failed: " + state.listError
+  var c = counts(rows)
+  var share = 0, readable = 0
+  for (var i = 0; i < (rows || []).length; i++) {
+    if (rows[i].runtime !== "running") continue
+    var stat = stats && stats[unitFor(rows[i])]
+    if (stat && stat.mem !== null && stat.mem !== undefined) {
+      share += stat.mem
+      readable++
+    }
+  }
+  var used = meminfo ? formatMemory((meminfo.totalKiB - meminfo.availableKiB) * 1024) : "—"
+  return "host " + used + " used · VMs " + (readable ? formatMemory(share) +
+    (readable < c.running ? " (partial)" : "") : "—") + " · " + c.running + " running" +
+    (c.pending > 0 ? " · " + c.pending + " pending" : "") +
+    (c.failing > 0 ? " · " + c.failing + " failed" : "")
 }
 
 function removeWaitStep(wait, listOk, listGen, stopped, now) {
