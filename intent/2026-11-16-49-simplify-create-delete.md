@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 49
 author: olafkfreund
 ---
@@ -127,6 +127,8 @@ numbers below are on `fix/46-review-findings`.
 - **Must not start before #47 merges.**
 
 ## Open questions
+
+Answered by the owner on 2026-11-16, with the approval: each recommendation below is the decision.
 
 1. **Should "Apply now?" also follow a permanent delete?** That is also a
    queued `apps.nix` change, and `a` already applies it.
