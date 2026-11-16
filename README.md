@@ -43,18 +43,21 @@ The walkthrough, from install to troubleshooting, is
 - **Knows what it may touch.** A permanent VM's line is *managed* when this
   plugin wrote it and can read it back; a line you edited by hand, or a machine
   declared elsewhere in your flake, is shown but never rewritten.
-- **Creates from a form.** Disposable: a name and a template. Permanent: the
-  template, autostart, memory, cores, an SSH port, an SSH key picked from
-  `~/.ssh`, and shares. Bad input is flagged inline before anything runs, and a
-  permanent VM shows you its exact line before it is written.
-- **Detects what your nixarchy can do.** Keys that need a newer `nixarchy vm`
-  (a build log in the panel, attaching to a running VM, changing a template)
-  or a newer nixarchy-pkg (editing a permanent VM's line) appear once those
-  features exist; see [`docs/upstream.md`](docs/upstream.md).
+- **Creates from a form.** Disposable: a name, a template and a **Start it
+  now** switch (on by default, so Enter creates it and streams its build into
+  the panel). Permanent: the template, autostart, memory and cores, with an
+  **SSH and shares** switch for the SSH port, an SSH key picked from `~/.ssh`,
+  and shares (it opens on its own whenever one is set or has an error). Bad
+  input is flagged inline before anything runs, and a permanent VM shows you
+  its exact line before it is written, then offers to apply it.
+- **Requires a current nixarchy.** It checks `nixarchy vm` (`run --detach`,
+  `console`, `set-template`, `list --json`) and, when nixarchy.pkg is
+  installed, `opt replace` at startup (`"checking nixarchy…"`), and gives one
+  message naming what to update if either is too old; see
+  [`docs/upstream.md`](docs/upstream.md).
 - **One change at a time.** While a start, stop, delete, create or edit runs,
-  every other change is refused with a reason, from either surface. On a nixarchy
-  without `run --detach`, a start opens a terminal that the plugin does not track,
-  so it does not block other changes.
+  every other change is refused with a reason, from either surface, and
+  create-and-start and stop-and-delete hold the lock from start to finish.
 
 ## Size and text
 
@@ -87,10 +90,10 @@ was, on whichever row moves up into the slot.
 | `r` | Restart it (permanent) |
 | `l` | Follow its journal in a terminal (permanent) |
 | `m` | Edit it: the template, or every field of a permanent VM |
-| `x` | Delete it (a permanent VM's state directory is kept) |
+| `x` | Delete it (stops a running disposable VM first; a permanent VM's state directory is kept) |
 | `y` | Copy its name |
-| `c` | Create a new VM |
-| `i` | Describe a VM to the default agent, which fills the form |
+| `c` | Create a new VM (opens at the name) |
+| `i` | Describe a VM to the default agent (opens at the description) |
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
 | `u` | Refresh now |
@@ -108,10 +111,7 @@ was, on whichever row moves up into the slot.
 
 `s` on a stopped disposable VM starts it in the background, with its first
 build streamed into the panel. Enter on a running one opens its console in a
-terminal, and Ctrl-] leaves it running. On a nixarchy from before
-[nixarchy#762](https://github.com/olafkfreund/nixarchy/issues/762), Enter and
-`s` open `nixarchy vm run` in a terminal instead, and closing that terminal
-stops the VM.
+terminal, and Ctrl-] leaves it running.
 
 ### The form
 
@@ -212,7 +212,7 @@ Set these in the bar widget's settings (Super+Alt+B), or inline on its entry in
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `refreshIntervalSec` | `30` | How often the bar glyph polls. An open panel polls every 3 s regardless. Nothing polls while every surface is closed and no bar shows the widget. |
+| `refreshIntervalSec` | `30` | How often the bar glyph polls. An open panel polls every 3 s regardless. Nothing polls while every surface is closed and no bar shows the widget (except a stop-and-delete in progress, at most 90 s). |
 | `showStopped` | `true` | Off lists only running VMs. |
 | `hideWhenEmpty` | `false` | Hide the bar glyph while there are no VMs. |
 | `aiAssist` | `true` | Off hides the describe field and the `i` key even when the default agent supports it. |
@@ -265,9 +265,8 @@ nix build && omarchy plugin validate "$(readlink -f result)"
 ```
 
 The rules for changing anything here are in [`AGENTS.md`](AGENTS.md). The design
-for each change is in `intent/`, `spec/` and `plan/`. The two upstream changes
-those keys depend on have both shipped, and are recorded in
-[`docs/upstream.md`](docs/upstream.md).
+for each change is in `intent/`, `spec/` and `plan/`. Upstream requirements are
+recorded in [`docs/upstream.md`](docs/upstream.md).
 
 ## License
 

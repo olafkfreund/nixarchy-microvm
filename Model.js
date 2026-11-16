@@ -42,11 +42,11 @@ var SHORTCUTS = [
   { group: "VM", keys: "r", text: "Restart it (permanent)" },
   { group: "VM", keys: "l", text: "Follow its journal in a terminal (permanent)" },
   { group: "VM", keys: "m", text: "Edit it: the template, or every field of a permanent VM" },
-  { group: "VM", keys: "x", text: "Delete it (a permanent VM's state directory is kept)" },
+  { group: "VM", keys: "x", text: "Delete it (running disposable stopped first; permanent state kept)" },
   { group: "VM", keys: "y", text: "Copy its name" },
 
-  { group: "All VMs", keys: "c", text: "Create a new VM" },
-  { group: "All VMs", keys: "i", text: "Describe a VM to the default agent, which fills the form" },
+  { group: "All VMs", keys: "c", text: "Create a new VM (opens at the name)" },
+  { group: "All VMs", keys: "i", text: "Describe a VM to the default agent (opens at the description)" },
   { group: "All VMs", keys: "a", text: "Apply queued changes: nixarchy-apply in a terminal" },
 
   { group: "Panel", keys: "o", text: "Show the build log" },
@@ -1588,7 +1588,7 @@ function agentPrompt(text, templates) {
     "You fill in a form that creates a NixOS MicroVM on this desktop. Answer with one JSON object matching the schema you were given, and nothing else.",
     "",
     "Two kinds of VM:",
-    "- disposable: created and destroyed freely, no root, no rebuild, runs only while attached. Choose this unless the request asks for something below.",
+    "- disposable: created and destroyed freely, no root, no rebuild. Choose this unless the request asks for something below.",
     "- permanent: boots with the host under systemd, can forward an SSH port, has fixed memory and cores. Choose this when the request mentions boot, autostart, SSH, a port, or keeping the machine.",
     "",
     "Templates (use the name, not the label):"

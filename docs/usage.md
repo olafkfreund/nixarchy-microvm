@@ -16,8 +16,7 @@ nixarchy can run NixOS inside small virtual machines, sharing the host's own
 `/nix/store` so there is nothing to download or install. There are two kinds:
 
 - a **disposable** VM is made with `nixarchy vm create`, lives under
-  `~/.local/state/nixarchy/microvm/<name>/`, needs no root and no rebuild,
-  and runs only while you are attached to it;
+  `~/.local/state/nixarchy/microvm/<name>/`, and needs no root and no rebuild;
 - a **permanent** VM is declared in your configuration as
   `programs.nixarchy.services.microvm.machines.<name>`, boots with the host
   under systemd, and can forward an SSH port.
@@ -29,12 +28,15 @@ and `nixarchy-apply`, which rebuilds your system.
 
 ## Requirements
 
-- **`nixarchy-vm`** on your `PATH`: it comes with nixarchy.
+- **`nixarchy-vm`** on your `PATH`, with `list --json`, `run --detach`,
+  `console` and `set-template` (nixarchy#762, shipped 2026-09-19): it comes
+  with nixarchy.
 - **`systemctl`** and **`journalctl`** for permanent VMs.
 - **`omarchy-launch-tui`**, **`omarchy-launch-floating-terminal-with-presentation`**
   and **`wl-copy`**: Omarchy ships all three.
-- **nixarchy.pkg**, for permanent VMs. This plugin writes their lines through
-  that plugin's writers, so it must be installed at
+- **nixarchy.pkg**, with `opt replace` (nixarchy-pkg#19, shipped 2026-09-19),
+  for permanent VMs. This plugin writes their lines through that plugin's
+  writers, so it must be installed at
   `~/.config/omarchy/plugins/nixarchy.pkg`. Without it, the permanent half of
   the create form says so and the keys that need it stay hidden.
 - **`claude`** as your default agent, for AI assist
@@ -158,54 +160,57 @@ position and takes whichever row moves up.
 
 ### A throwaway shell
 
-1. Press `c`. The form opens on **Kind**: leave it at *disposable*.
-2. Tab to **Name** and type one (letters, digits, `_` and `-`, starting with a
-   letter).
-3. Tab to **Template**. Press ↓ to move into the list, which shows each
+1. Press `c` (or run the `create` IPC / menu payload). The form opens at
+   **Name**, with **Kind** set to *disposable*: type a name (letters, digits,
+   `_` and `-`, starting with a letter).
+2. Tab to **Template**. Press ↓ to move into the list, which shows each
    template's note, and Enter to pick one; `shell` is the default.
-4. Press Enter. The VM is created, and its row says *stopped*.
-5. Press `s` on the row. The VM starts in the background, and its first build
-   (a minute or two, much less once cached) streams into the panel. Esc goes
-   back to the list without stopping anything, and `o` shows the log again.
-   The row gets a filled dot once the VM runs.
-6. Press Enter on the running row. Its console opens in a terminal, at the
+3. **Start it now** is on by default (Space flips it off if you only want to
+   create the VM stopped).
+4. Press Enter. The VM is created and starts in the background under one lock,
+   and the panel switches to the **log**, showing the create output followed by
+   its first build (a minute or two, much less once cached). Esc goes back to
+   the list without stopping anything, and `o` shows the log again. The row
+   gets a filled dot once the VM runs.
+5. Press Enter on the running row. Its console opens in a terminal, at the
    guest's prompt. Ctrl-] leaves the console, and the VM keeps running.
-7. `s` on a running VM stops it. `m` on a stopped one changes its template.
-   `x` deletes it and its state directory, after asking; stop it first.
-
-On a nixarchy from before
-[nixarchy#762](https://github.com/olafkfreund/nixarchy/issues/762), there is
-no background start: Enter and `s` open `nixarchy vm run` in a terminal, and
-closing that terminal stops the VM.
+6. `s` stops a running VM or starts a stopped one. `m` on a stopped one changes
+   its template. `x` deletes it and its state directory, after asking (if it is
+   running, `x` stops it first and then deletes it).
 
 ### A permanent machine with SSH
 
-1. Press `c`, then Space on **Kind** to flip it to *permanent*.
+1. Press `c`, Shift+Tab to **Kind**, and press Space to flip it to *permanent*.
 2. Fill in the name (lower-case letters, digits and `-`, starting with a
    letter), the template, and the rest:
    - **Start at boot**: on by default.
    - **Memory** in MiB and **Cores**.
-   - **SSH port on the host**: empty means console only. With a port, the
-     guest runs sshd on it. Each permanent VM in `apps.nix` needs its own host
-     port; reusing one says "Port N is already used by <name>". A machine
-     declared elsewhere in your flake is not checked.
-   - **SSH public key**: press ↓ to pick one of your `~/.ssh/*.pub`. The
-     guest's `dev` user has no password, so a port without a key reaches a
-     daemon nobody can log into; the form warns.
-   - **Shares**: `host:guest` pairs, space-separated, such as `~/src:/mnt/src`.
-     The guest path must be absolute and cannot be `/`, `/nix` or `/mnt/host`,
-     which the guest already uses, and two shares on the same VM cannot use the
-     same guest path ("Two shares mount at <path>"). Neither side may contain
-     a `.` or `..` segment — write the path you mean in full rather than
-     reaching through a parent. `~/` needs a plain absolute `HOME`; if yours
-     contains anything unusual, spell the host path out instead.
+   - **SSH and shares**: off by default, so the form stays short. Press Space
+     to open the three fields below (it also opens on its own whenever you edit
+     a VM that uses them, the agent fills one, or Enter flags an error in one):
+     - **SSH port on the host**: empty means console only. With a port, the
+       guest runs sshd on it. Each permanent VM in `apps.nix` needs its own host
+       port; reusing one says "Port N is already used by <name>". A machine
+       declared elsewhere in your flake is not checked.
+     - **SSH public key**: press ↓ to pick one of your `~/.ssh/*.pub`. The
+       guest's `dev` user has no password, so a port without a key reaches a
+       daemon nobody can log into; the form warns.
+     - **Shares**: `host:guest` pairs, space-separated, such as `~/src:/mnt/src`.
+       The guest path must be absolute and cannot be `/`, `/nix` or `/mnt/host`,
+       which the guest already uses, and two shares on the same VM cannot use the
+       same guest path ("Two shares mount at <path>"). Neither side may contain
+       a `.` or `..` segment — write the path you mean in full rather than
+       reaching through a parent. `~/` needs a plain absolute `HOME`; if yours
+       contains anything unusual, spell the host path out instead.
 3. Press Enter. The **review** shows the exact line that will go into
    `~/.config/nixarchy/apps.nix`, the two commands that write it (the
    `microvm` service row, then the line), and a reminder that applying
    rebuilds the whole system. Enter writes it; Esc goes back to the form.
-4. The row now says *pending apply*, and the footer offers `a`. That opens
-   `nixarchy-apply` in a terminal, where you answer its questions and watch
-   the rebuild. After it, the unit exists: `s` starts and stops it, `r`
+4. Once it is written, the surface that submitted it asks: `Apply now?
+   nixarchy-apply rebuilds the whole system from apps.nix, in a terminal.`
+   (Cancel is the default; **Apply** or `y` runs the same `nixarchy-apply` as
+   `a`). Until you apply, the row says *pending apply* and the footer offers
+   `a`. After the rebuild, the unit exists: `s` starts and stops it, `r`
    restarts it, `l` follows its journal, and Enter opens `ssh -p <port>
    dev@localhost` in a terminal.
 
@@ -215,37 +220,44 @@ rewriting it; it can still be started, stopped and watched.
 
 ### Edit
 
-`m` on a permanent VM opens the same form with its values filled in; Enter goes
-to the review again, which says `opt replace`, and rewrites the line in place.
-While that change waits for apply, the VM's SSH console is hidden with "apply
-the queued change first". `m` on a stopped disposable VM changes its template.
-On an older install without nixarchy-pkg's `opt replace` or `nixarchy vm
-set-template`, the key is hidden and the footer says so.
+`m` on a permanent VM opens the same form with its values filled in (and **SSH
+and shares** already open if the VM has a port, a key or shares); Enter goes to
+the review again, which says `opt replace`, rewrites the line in place, and
+asks `Apply now?`. While that change waits for apply, the VM's SSH console is
+hidden with "apply the queued change first". `m` on a stopped disposable VM
+changes its template.
 
 ### Delete
 
 `x` asks first, and **Cancel** is the default answer. Answer from the keyboard
 with `y` or `enter` for yes, `n` or `esc` for no — the question takes the
-keyboard wherever you were, including out of the filter box. For a disposable
-VM it deletes the VM and everything in its state directory. For a permanent VM it
+keyboard wherever you were, including out of the filter box. For a stopped
+disposable VM it deletes the VM and everything in its state directory. For a
+running disposable VM it asks `Stop and delete <name>, and everything in
+<dir>?` once, stops the VM, waits for a fresh list to confirm it stopped
+(re-sending the stop once at 30 s, and giving up at 90 s with `<name> did not
+stop within 90 s; nothing was deleted`), and then deletes it, holding the lock
+throughout (even if you close the panel while it waits). For a permanent VM it
 removes the line from `apps.nix`; the row stays as "removed, pending apply", and
-the unit and `/var/lib/microvms/<name>` stay until you apply. This plugin never
-deletes that directory.
+the unit and `/var/lib/microvms/<name>` stay until you apply (a delete never
+asks to apply now). This plugin never deletes that directory.
 
 ### Apply
 
-`a` opens `nixarchy-apply` in a floating terminal. It copies `apps.nix`,
-`services.nix` and `advanced.nix` into your flake and runs the rebuild, asking
-for your password on the way. The plugin never runs it for you.
+`a` (or answering **Apply** after a permanent create or edit) opens
+`nixarchy-apply` in a floating terminal. It copies `apps.nix`, `services.nix`
+and `advanced.nix` into your flake and runs the rebuild, asking for your
+password on the way. The plugin never runs it for you.
 
 ## AI assist
 
-With `claude` as your default agent, the create form starts with a **Describe
-it** field. Type a sentence, such as "a python box with 4 GB and my ~/src
+With `claude` as your default agent, pressing `i` opens the create form right on
+the **Describe it** field. Type a sentence, such as "a python box with 4 GB and my ~/src
 shared", and press Enter. The plugin runs `claude` once, non-interactively,
 with every tool switched off and a strict JSON schema for the answer, and
 fills the form from what comes back: the kind, the name, the template, and for
-a permanent VM the memory, cores, port and shares. Its short reasoning appears
+a permanent VM the memory, cores, port and shares (turning **SSH and shares**
+on when it sets a port or shares). Its short reasoning appears
 under the field.
 
 What it cannot do:
@@ -301,10 +313,16 @@ security.polkit.extraConfig = ''
 '';
 ```
 
-**A VM started from Enter stopped when I closed the terminal.** That happens
-on a nixarchy from before nixarchy#762, where the terminal running `nixarchy vm
-run` holds the VM. Update nixarchy to get the background start, or leave the
-terminal open.
+**"checking nixarchy…", or "This plugin needs nixarchy…" / "This plugin needs
+nixarchy-pkg…".** On startup the plugin checks `nixarchy-vm help` and, when
+nixarchy.pkg is installed, `nixarchy-pkg opt replace`. Until both finish, every
+action is absent and the hint line says `"checking nixarchy…"`. If either is
+older than the 2026-09-19 releases
+([`docs/upstream.md`](https://github.com/olafkfreund/nixarchy-microvm/blob/main/docs/upstream.md)),
+the header and hint show one message (`This plugin needs nixarchy with nixarchy
+vm run --detach, console and set-template (nixarchy#762); update nixarchy` or
+`This plugin needs nixarchy-pkg opt replace (nixarchy-pkg#19); update
+nixarchy.pkg`) and actions stay disabled until you update.
 
 **"services.nix predates the microvm row" under Kind.** Your
 `~/.config/nixarchy/services.nix` was created before nixarchy had the
@@ -337,18 +355,18 @@ it where it is declared.
 anything is written. Paths use letters, digits and `_ . / + -`; a permanent
 name is lower-case letters, digits and `-`; shares are `host:guest` pairs.
 
-**Some keys are missing that the docs mention.** Enter on a running disposable
-VM, `s` with a log in the panel, `m` on a disposable VM, and `m` on a
-permanent VM each need an upstream change that has shipped, and that this
-plugin detects at runtime. An older install lacks them:
-[`docs/upstream.md`](https://github.com/olafkfreund/nixarchy-microvm/blob/main/docs/upstream.md)
-lists them and what happens without each.
-
 **"Busy: run demo-python — press o to watch".** Only one change runs at a
-time, across the popup and the menu. The message names the job holding the
-lock. `o` shows its log, and the key works again once the job finishes. On a nixarchy
-without `run --detach`, a start opens a terminal that the plugin does not track,
-so it holds no lock.
+time, across the popup and the menu, and multi-step jobs (create-and-start,
+stop-and-delete) hold the lock from start to finish. The message names the job
+holding the lock. `o` shows its log, and the key works again once the job
+finishes.
+
+**"<name> did not stop within 90 s; nothing was deleted".** Deleting a running
+disposable VM stops it first and waits up to 90 s for a fresh list to show it
+stopped (re-sending the stop at 30 s). If it is still running after 90 s (or if
+you press `X` after a minute, which says `gave up waiting for <name>; nothing
+was deleted`), the delete is skipped so the state directory of a running VM is
+never removed.
 
 **A change that will not finish.** While something runs, the footer reads
 `working…` and names it. If it is still going after a minute, the footer adds
