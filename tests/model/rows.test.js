@@ -233,6 +233,21 @@ test("cardWidth holds a fraction of the host's offer between two bounds (#24)", 
   eq(Model.cardWidth(0, 0.3, 620, 380), 380)
 })
 
+test("menuGeometry sizes and places the menu on a normal screen (#50)", () => {
+  eq(Model.menuGeometry(2560, 1440, 560, 1500, 700, 32, 24, 16),
+    { width: 1440, height: 724, top: 239 })
+})
+
+test("menuGeometry caps both dimensions on a small screen (#50)", () => {
+  eq(Model.menuGeometry(800, 500, 560, 1100, 700, 200, 24, 16),
+    { width: 720, height: 425, top: 25 })
+})
+
+test("menuGeometry keeps a nonzero natural size before the screen is known (#50)", () => {
+  eq(Model.menuGeometry(0, 0, 560, 1100, 700, 32, 24, 16),
+    { width: 592, height: 724, top: 16 })
+})
+
 test("bodyBudget is what the chrome leaves (#24)", () => {
   eq(Model.bodyBudget(1000, 200), 800)
   eq(Model.bodyBudget(0, 200), 0)
