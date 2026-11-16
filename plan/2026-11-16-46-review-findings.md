@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 issue: 46
 spec: spec/2026-11-16-46-review-findings.md
 coders:
