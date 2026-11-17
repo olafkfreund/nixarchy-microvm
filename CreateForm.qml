@@ -56,8 +56,14 @@ FocusScope {
   property string reasoning: ""
   property bool thinking: false
   property string agentError: ""
+  // The agent owner id MicrovmView uses, so pickPreset frees the same one.
+  property string surface: ""
+  // Snapshots taken in start(): a read landing mid-form changes nothing.
+  property var presets: []
+  property var presetErrors: []
+  property int presetMore: 0
 
-  readonly property var fields: Model.visibleFields(form, features)
+  readonly property var fields: Model.visibleFields(form, Object.assign({}, features, { presets: root.presets.length, presetErrors: root.presetErrors.length }))
   // The field set can shrink under the user -- an agent reply that switches
   // kind drops six fields -- which left fieldIndex past the end, current null,
   // the hint blank and space dead until Tab. Not through moveFieldTo: a field
@@ -87,6 +93,9 @@ FocusScope {
   function start(kind, field) {
     root.setForm(Model.emptyForm(kind))
     root.reasoning = ""
+    root.presets = Array.prototype.slice.call(MicrovmState.presets)
+    root.presetErrors = Array.prototype.slice.call(MicrovmState.presetErrors)
+    root.presetMore = MicrovmState.presetMore
     root.begin()
     // After begin(), which resets the cursor to 0.
     root.fieldIndex = Model.fieldIndexOf(root.fields, field)
@@ -95,6 +104,9 @@ FocusScope {
   function startEdit(row) {
     root.setForm(Model.formFromRow(row))
     root.reasoning = ""
+    root.presets = []
+    root.presetErrors = []
+    root.presetMore = 0
     root.begin()
   }
 
@@ -104,6 +116,19 @@ FocusScope {
     root.listIndex = -1
     root.fieldIndex = 0
     Qt.callLater(root.focusCurrent)
+  }
+
+  // A pick replaces everything typed so far.
+  function pickPreset(i) {
+    var p = root.presets[i]
+    if (!p) return
+    MicrovmState.resetAgent(root.surface)
+    root.setForm(Model.presetForm(p))
+    root.reasoning = ""
+    root.begin()
+    root.fieldIndex = Model.fieldIndexOf(root.fields, "name")
+    root.touched = Model.presetTouched(p.reply)
+    root.attempted = false
   }
 
   // The whole form at once (open, edit, or the agent's proposal).
@@ -209,6 +234,10 @@ FocusScope {
       else if (hasList && root.listIndex >= 0) root.listIndex = -1
       else root.canceled()
       return true
+    }
+    if (root.current && root.current.widget === "preset") {
+      var pi = Model.presetIndex(event.text, root.presets.length)
+      if (pi >= 0) { root.pickPreset(pi); return true }
     }
     if (key === Qt.Key_Tab && !shift) { moveField(1); return true }
     if (key === Qt.Key_Backtab || (key === Qt.Key_Tab && shift)) { moveField(-1); return true }
@@ -362,7 +391,7 @@ FocusScope {
 
               // bool / kind: one line with a state glyph.
               Row {
-                visible: !fieldItem.takesText
+                visible: !fieldItem.takesText && fieldItem.modelData.widget !== "preset"
                 width: parent.width
                 spacing: Style.spacing.md
 
@@ -388,6 +417,39 @@ FocusScope {
                   elide: Text.ElideRight
                   width: Math.max(0, Math.min(implicitWidth, body.width - Style.space(24)))
                 }
+              }
+
+              Text {
+                visible: fieldItem.modelData.widget === "preset"
+                width: parent.width
+                text: fieldItem.modelData.label + (root.form.preset !== "" ? ":  " + root.form.preset : "")
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                elide: Text.ElideRight
+              }
+
+              Text {
+                visible: fieldItem.modelData.widget === "preset" && text !== ""
+                width: parent.width
+                text: Model.presetLine(root.presets)
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
+              }
+
+              Text {
+                visible: fieldItem.modelData.widget === "preset" && text !== ""
+                width: parent.width
+                text: Model.presetNote(root.presetErrors, root.presets.length, root.presetMore)
+                textFormat: Text.PlainText
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fontSize.caption
+                wrapMode: Text.WordWrap
               }
 
               Text {
@@ -513,6 +575,7 @@ FocusScope {
         var move = "tab/↓ next   "
         var go = root.form.kind === "permanent" ? "enter review" : (root.form.editing ? "enter save" : "enter create")
         if (!f) return ""
+        if (f.widget === "preset") return "1-9 pick   tab next   esc cancel"
         if (f.key === "describe") return "enter ask the agent   tab skip   esc cancel"
         if (f.widget === "template" || f.widget === "key") return (root.listIndex >= 0 ? "enter pick   " : "↓ list   ") + "tab next   esc cancel"
         if (f.widget === "bool") return move + "space toggle   " + go + "   esc cancel"

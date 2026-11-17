@@ -28,6 +28,16 @@ FocusScope {
   //     -> bodyHeight -> body.height -> each body child
   readonly property int chromeHeight: headerBlock.implicitHeight
     + footerBlock.implicitHeight + Style.spacing.panelGap * 2
+  // One object for the empty text and the digit keys, so they cannot disagree.
+  readonly property var emptyInputs: ({
+    everLoaded: MicrovmState.everLoaded,
+    reachable: MicrovmState.reachable,
+    listError: MicrovmState.listError,
+    upstreamError: MicrovmState.upstreamError,
+    filtered: MicrovmState.rows.length > 0,
+    showStopped: MicrovmState.showStopped,
+    presets: MicrovmState.presets.length
+  })
   readonly property int bodyNatural: root.mode === "form" ? createForm.implicitHeight
     : root.mode === "log" ? logView.implicitHeight
     : root.mode === "review" ? review.implicitHeight
@@ -354,10 +364,17 @@ FocusScope {
     if (key === "?") { root.helpOpen = !root.helpOpen; return }
     if (root.helpOpen) { root.helpOpen = false; return }
     if (key === "/") { filterField.forceActiveFocus(); return }
-    if (key === "u") { MicrovmState.refresh(); return }
+    if (key === "u") { MicrovmState.refresh(); MicrovmState.readPresets(); return }
     if (key === "v") { root.view = root.view === "overview" ? "list" : "overview"; return }
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
+    var pick = Model.presetIndex(key, MicrovmState.presets.length)
+    if (pick >= 0 && Model.startHere(root.emptyInputs)) {
+      openForm("disposable", "name")
+      // openForm refuses until the upstream verdict; never fill a hidden form.
+      if (root.mode === "form") createForm.pickPreset(pick)
+      return
+    }
     if (key === "c") { openForm("disposable", "name"); return }
     if (key === "i") {
       if (!root.listActions.assist) return
@@ -539,6 +556,7 @@ FocusScope {
           foreground: root.foreground
           fontFamily: root.fontFamily
           fontSize: root.fontSize
+          surface: root.surface
           thinking: MicrovmState.thinking && MicrovmState.agentOwner === root.surface
           agentError: MicrovmState.agentOwner === root.surface ? MicrovmState.agentError : root.agentNotice
           onSubmitted: function(form) { root.submitForm(form) }
@@ -717,18 +735,36 @@ FocusScope {
 
           Text {
             horizontalAlignment: Text.AlignHCenter
-            text: Model.emptyText({
-              everLoaded: MicrovmState.everLoaded,
-              reachable: MicrovmState.reachable,
-              listError: MicrovmState.listError,
-              upstreamError: MicrovmState.upstreamError,
-              filtered: MicrovmState.rows.length > 0,
-              showStopped: MicrovmState.showStopped
-            })
+            width: parent.width
+            text: Model.emptyText(root.emptyInputs)
             textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: root.fontSize.body
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: Model.startHere(root.emptyInputs) && MicrovmState.presets.length > 0
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: Model.presetLine(MicrovmState.presets)
+            textFormat: Text.PlainText
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fontSize.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            visible: Model.startHere(root.emptyInputs) && text !== ""
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: Model.presetNote(MicrovmState.presetErrors, MicrovmState.presets.length, MicrovmState.presetMore)
+            textFormat: Text.PlainText
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fontSize.caption
             wrapMode: Text.WordWrap
           }
         }
