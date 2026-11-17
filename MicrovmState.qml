@@ -70,6 +70,10 @@ Singleton {
   property var base: ({})
   property var meminfo: null
   property int statsReads: 0
+  property var presets: []
+  property var presetErrors: []
+  property int presetMore: 0
+  property int presetReads: 0
 
   function runningUnits(system) {
     var out = []
@@ -262,6 +266,15 @@ Singleton {
     root.readPending()
   }
 
+  function readPresets() {
+    if (presetsProcess.running) return
+    var argv = Model.presetsArgv(root.configHome)
+    if (!argv) return
+    root.presetReads += 1
+    presetsProcess.command = argv
+    presetsProcess.running = true
+  }
+
   function readPending() {
     if (!root.active || !root.pkgScript || pendingProcess.running) return
     root.pendingGen = root.appsGen
@@ -285,7 +298,7 @@ Singleton {
   }
 
   onActiveChanged: {
-    if (active) refresh()
+    if (active) { refresh(); readPresets() }
     else pendingSync = false
   }
   onShowStoppedChanged: if (root.active || root.background) root.refresh()
@@ -668,7 +681,10 @@ Singleton {
       lastError: root.lastError,
       listError: root.listError,
       statsHolders: root.statsHolders,
-      statsReads: root.statsReads
+      statsReads: root.statsReads,
+      presetReads: root.presetReads,
+      presets: root.presets.length,
+      presetErrors: root.presetErrors.length
     })
   }
 
@@ -804,6 +820,17 @@ Singleton {
     id: keysProcess
     stdout: StdioCollector { id: keysOut; waitForEnd: true }
     onExited: function(code) { root.sshKeys = Model.parseSshKeys(keysOut.text) }
+  }
+
+  Process {
+    id: presetsProcess
+    stdout: StdioCollector { id: presetsOut; waitForEnd: true }
+    onExited: function(code) {
+      var r = Model.parsePresets(presetsOut.text)
+      root.presets = r.presets
+      root.presetErrors = r.errors
+      root.presetMore = r.more
+    }
   }
 
   // nixarchy.pkg's adapter is found by reading it: a plugin that is not
