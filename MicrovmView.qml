@@ -61,6 +61,18 @@ FocusScope {
   // Bound by the host: only the surface that is showing may ask.
   property bool opened: false
 
+  // "list" or "overview" (the same rows as cards, with live readings).
+  property string view: "list"
+  readonly property bool wantsStats: opened && mode === "list" && view === "overview"
+  property bool holdsStats: false
+  onWantsStatsChanged: {
+    if (wantsStats && !holdsStats) { MicrovmState.acquire("stats"); holdsStats = true }
+    else if (!wantsStats && holdsStats) { MicrovmState.release("stats"); holdsStats = false }
+  }
+  Component.onDestruction: {
+    if (holdsStats && MicrovmState) { MicrovmState.release("stats"); holdsStats = false }
+  }
+
   Connections {
     target: MicrovmState
     function onPermanentWritten(name, owner) {
@@ -117,6 +129,7 @@ FocusScope {
   // survives any number of closes.
   function reset() {
     mode = "list"
+    view = MicrovmState.settings.overviewByDefault === true ? "overview" : "list"
     cursorActive = false
     cursorIndex = 0
     cursorKey = ""
@@ -231,6 +244,7 @@ FocusScope {
 
   // Called when the surface closes.
   function dismiss() {
+    view = "list"
     helpOpen = false
     agentNotice = ""
     closeConfirm()
@@ -341,6 +355,7 @@ FocusScope {
     if (root.helpOpen) { root.helpOpen = false; return }
     if (key === "/") { filterField.forceActiveFocus(); return }
     if (key === "u") { MicrovmState.refresh(); return }
+    if (key === "v") { root.view = root.view === "overview" ? "list" : "overview"; return }
     if (key === "a") { if (root.listActions.apply) apply(); return }
     if (key === "o") { openLog(); return }
     if (key === "c") { openForm("disposable", "name"); return }
@@ -420,7 +435,10 @@ FocusScope {
 
         PanelHero {
           title: "MicroVMs"
-          meta: Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError, MicrovmState.upstreamError)
+          meta: root.view === "overview"
+            ? Model.overviewSummaryText(MicrovmState.allRows, MicrovmState.stats, MicrovmState.meminfo,
+                { reachable: MicrovmState.reachable, listError: MicrovmState.listError, upstreamError: MicrovmState.upstreamError })
+            : Model.summaryText(MicrovmState.allRows, MicrovmState.reachable, MicrovmState.listError, MicrovmState.upstreamError)
           foreground: root.foreground
           fontFamily: root.fontFamily
           iconOpacity: MicrovmState.counts.running > 0 ? 1.0 : 0.5
@@ -680,6 +698,10 @@ FocusScope {
           foreground: root.foreground
           fontFamily: root.fontFamily
           fontSize: root.fontSize
+          cards: root.view === "overview"
+          large: root.large
+          stats: MicrovmState.stats
+          history: MicrovmState.history
 
           onActionRequested: function(key, verb) { root.dispatch(key, verb) }
           onCursorRequested: function(key) { root.setCursor(key) }
@@ -687,7 +709,7 @@ FocusScope {
 
         Column {
           id: emptyState
-          visible: root.mode === "list" && list.count === 0
+          visible: root.mode === "list" && root.rows.length === 0
           anchors.fill: parent
           spacing: Style.spacing.sm
           topPadding: Style.spacing.lg

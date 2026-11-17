@@ -62,3 +62,9 @@ test("every key the QML binds has a sheet entry (#25 drift alarm)", () => {
 //     field, which no scan can tell apart;
 //   - mouse-only actions: every row button, the hero's controls, the picker;
 //   - keys handled by imported host components (PanelKeyCatcher, ConfirmDialog).
+
+test("v switches the overview and is on the sheet (#53)", () => {
+  const src = fs.readFileSync(path.join(ROOT, "MicrovmView.qml"), "utf8")
+  ok(src.includes('key === "v"'), "MicrovmView.qml does not bind v")
+  ok(Model.SHORTCUTS.some(s => s.keys.split(/\s+/).includes("v")), "the sheet lost: v")
+})
