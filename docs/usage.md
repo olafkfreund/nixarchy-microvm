@@ -226,7 +226,8 @@ Presets are JSON files in `~/.config/nixarchy/microvm/presets/`; the
 has the format.
 
 1. Press `c`. If there are presets, a **Start from a preset** row sits above
-   **Name**, with `1 label   2 label` under it. Press `↑` to reach it.
+   **Name**, with `1 label   2 label` under it. It is the top row: press `↑`
+   until the cursor is on it.
 2. Press `1`-`9`. The form is filled from that preset, and the cursor goes to
    **Name**. A pick replaces everything you typed.
 3. Type a name and press Enter, as for any VM.
@@ -349,7 +350,8 @@ succeeds again.
 **A preset is skipped.** A dim line under the preset row (or the empty list)
 names the file and the cause: `not valid JSON`, `unknown key "…"`, `wrong
 type: <key>`, `too many shares (over 16)`, `too long: <key>`, or `too large
-(over 16 KiB)`. Fix the file and press `u` to read them again.
+(over 16 KiB)`. Fix the file, leave the form with `esc`, press `u` on the
+list to read them again, and open the form again.
 
 **Nothing happens on a key.** A command is missing (see Requirements), or the
 key does not apply to that row: the line above the footer says why.

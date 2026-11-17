@@ -583,6 +583,8 @@ FocusScope {
               // afterwards: the agent's proposal should show its errors
               // immediately rather than waiting for the user to touch a field.
               createForm.begin()
+              // begin() goes to field 0, which is the preset row when presets exist.
+              createForm.fieldIndex = Model.fieldIndexOf(createForm.fields, "describe")
               createForm.attempted = true
             }
           }
