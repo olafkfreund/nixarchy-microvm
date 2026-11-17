@@ -32,6 +32,7 @@ and `nixarchy-apply`, which rebuilds your system.
   `console` and `set-template` (nixarchy#762, shipped 2026-09-19): it comes
   with nixarchy.
 - **`systemctl`** and **`journalctl`** for permanent VMs.
+- **`timeout`**, **`find`** and **`cat`**, to read presets.
 - **`omarchy-launch-tui`**, **`omarchy-launch-floating-terminal-with-presentation`**
   and **`wl-copy`**: Omarchy ships all three.
 - **nixarchy.pkg**, with `opt replace` (nixarchy-pkg#19, shipped 2026-09-19),
@@ -218,6 +219,23 @@ and clears the readings.
    its template. `x` deletes it and its state directory, after asking (if it is
    running, `x` stops it first and then deletes it).
 
+### From a preset
+
+Presets are JSON files in `~/.config/nixarchy/microvm/presets/`; the
+[README](https://github.com/olafkfreund/nixarchy-microvm/blob/main/README.md#presets)
+has the format.
+
+1. Press `c`. If there are presets, a **Start from a preset** row sits above
+   **Name**, with `1 label   2 label` under it. Press `↑` to reach it.
+2. Press `1`-`9`. The form is filled from that preset, and the cursor goes to
+   **Name**. A pick replaces everything you typed.
+3. Type a name and press Enter, as for any VM.
+
+With no VMs at all, `1`-`9` on the empty list does the same in one key (not
+while the filter box has focus). The keys follow file-name order. Presets are
+read when a surface first opens and on `u`; a form opened straight from a
+closed plugin (the `create` payload) shows them from the next open.
+
 ### A permanent machine with SSH
 
 1. Press `c`, Shift+Tab to **Kind**, and press Space to flip it to *permanent*.
@@ -327,6 +345,11 @@ comes with nixarchy; check `which nixarchy-vm` in a terminal.
 **"VM list failed: …".** `nixarchy vm list` ran and exited with an error. The
 last known rows stay on screen, and the header shows this message until a poll
 succeeds again.
+
+**A preset is skipped.** A dim line under the preset row (or the empty list)
+names the file and the cause: `not valid JSON`, `unknown key "…"`, `wrong
+type: <key>`, `too many shares (over 16)`, `too long: <key>`, or `too large
+(over 16 KiB)`. Fix the file and press `u` to read them again.
 
 **Nothing happens on a key.** A command is missing (see Requirements), or the
 key does not apply to that row: the line above the footer says why.

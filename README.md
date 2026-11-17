@@ -93,6 +93,7 @@ was, on whichever row moves up into the slot.
 | `x` | Delete it (stops a running disposable VM first; a permanent VM's state directory is kept) |
 | `y` | Copy its name |
 | `c` | Create a new VM (opens at the name) |
+| `1`-`9` | With no VMs: create from that preset |
 | `i` | Describe a VM to the default agent (opens at the description) |
 | `a` | Apply queued changes: nixarchy-apply in a terminal |
 | `o` | Show the build log |
@@ -121,6 +122,7 @@ terminal, and Ctrl-] leaves it running.
 | `tab` `↓` / `shift+tab` `↑` | Next / previous field |
 | `↓` on Template or SSH key | Into the list; `enter` picks, `esc` goes back |
 | `space` | Flip a switch or the kind |
+| `1`-`9` | On the preset row: fill the form from that preset; replaces what you typed |
 | `j` `k` | Move between fields; on a text field they type, so use `tab` |
 | `enter` | Create, or review a permanent VM's line |
 | `j` `k` `↑` `↓` | In the review: scroll the line |
@@ -136,11 +138,41 @@ terminal, and Ctrl-] leaves it running.
 | `G` `end` | Jump to the end and follow |
 | `esc` | Back to the list; the job keeps running |
 
+## Presets
+
+A preset is a small JSON file that fills the create form for you. Put them in
+`$XDG_CONFIG_HOME/nixarchy/microvm/presets/` (usually
+`~/.config/nixarchy/microvm/presets/`), one per file, named `<label>.json`.
+The file name is the label. A disposable VM:
+
+```json
+{"template": "python"}
+```
+
+A permanent one:
+
+```json
+{"kind": "permanent", "memory": 4096, "cores": 2, "sshPort": 2222,
+ "shares": [{"source": "~/src", "mountPoint": "/mnt/src"}]}
+```
+
+- Allowed keys: `kind`, `template`, `memory`, `cores`, `sshPort`, `shares`,
+  and `name` and `reasoning`, which are ignored. Any other key skips the file.
+- A file over 16 KiB is skipped. At most 9 presets show; they sort by file
+  name, so `10-box.json` pins a place among the digits.
+- The form's **Start from a preset** row lists them. Press `1`-`9` on it to
+  fill the form: the name stays empty, **Start it now** stays on, and what you
+  typed before is replaced. With no VMs, `1`-`9` on the list does the same.
+- Presets are read when a surface first opens and on `u`. A form opened
+  straight from a closed plugin shows them from the next open.
+- A skipped file is named in a dim line under the row, with the cause.
+
 ## Installation
 
 Requirements, all on `PATH`:
 - `nixarchy-vm` (nixarchy's `nixarchy vm`);
 - `systemctl` and `journalctl`;
+- `timeout`, `find` and `cat`, to read [presets](#presets);
 - `omarchy-launch-tui`, `omarchy-launch-floating-terminal-with-presentation`
   and `wl-copy`, which Omarchy ships;
 - for permanent VMs, the
@@ -254,6 +286,9 @@ The menu has the same `status` hook:
   validated as if you had typed it, and shown with its reasoning. Nothing in it
   is executed. A prompt asking it to read a file or run a command yields at most
   a filled form.
+- **Presets are data.** They are read-only files read by `find`, typed per
+  field like the agent's reply, and never executed. They carry no SSH key, no
+  name and no start-now.
 - **systemd asks polkit.** Starting or stopping a permanent VM is plain
   `systemctl`; Omarchy's polkit agent draws the password prompt.
 

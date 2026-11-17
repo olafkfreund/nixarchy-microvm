@@ -35,7 +35,7 @@ form, never for an action.
 
 | Path | Owns |
 | --- | --- |
-| `Model.js` | All logic: parsing CLI, systemd and apps.nix output, rows, validation, the snippet grammar, the agent prompt and reply, and every command's argv. Pure `.pragma library` with no QML, tested under Node. |
+| `Model.js` | All logic: parsing CLI, systemd and apps.nix output, rows, validation, the snippet grammar, the agent prompt and reply, presets, and every command's argv. Pure `.pragma library` with no QML, tested under Node. |
 | `schema.json` | The JSON Schema handed to the agent. One copy, read at runtime and by the tests. |
 | `qmldir` | Declares `MicrovmState` a singleton, so the bar and the menu share one instance. |
 | `MicrovmState.qml` | Data, polling, the upstream verdict, the operation lock, the stream log, the agent call, and every `Process`. |
@@ -217,6 +217,12 @@ is the check that keeps this paragraph honest.
   `AGENT_FIELDS` may not name different fields *(checked: schema-fields)*.
   Nothing in a reply is executed, and the call itself runs `claude` with
   `--restricted --strict-mcp-config --tools ""`.
+- **Presets are data for `applyAgentReply` and nothing else.** *(by hand)* The
+  folder is read only by `Model.presetsArgv`, bounded (`timeout 2`, 16 KiB a
+  file, 32 examined, 9 kept), on the first open and on `u`, never on a timer.
+  A preset is parsed by `Model.parsePreset` and filled through
+  `applyAgentReply`; it cannot set `startNow`, `sshKey`, `describe` or
+  `editing`, and nothing in it is executed.
 - **Every permanent-VM write goes through nixarchy.pkg's writers.** `opt set`,
   `opt replace`, `nixarchy-opt-remove` and `nixarchy-service-enable`, never a file
   write, never `/var/lib/microvms`, never a unit file, never the flake. Applying is
