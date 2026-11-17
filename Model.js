@@ -46,6 +46,7 @@ var SHORTCUTS = [
   { group: "VM", keys: "y", text: "Copy its name" },
 
   { group: "All VMs", keys: "c", text: "Create a new VM (opens at the name)" },
+  { group: "All VMs", keys: "1-9", text: "With no VMs: create from that preset" },
   { group: "All VMs", keys: "i", text: "Describe a VM to the default agent (opens at the description)" },
   { group: "All VMs", keys: "a", text: "Apply queued changes: nixarchy-apply in a terminal" },
 
@@ -62,6 +63,7 @@ var SHORTCUTS = [
   { group: "Question", keys: "n  esc", text: "Answer no (the default)" },
 
   { group: "Form", keys: "tab  ↓", text: "Next field" },
+  { group: "Form", keys: "1-9", text: "On the preset row: fill the form from that preset" },
   { group: "Form", keys: "shift+tab  ↑", text: "Previous field" },
   { group: "Form", keys: "space", text: "Flip a switch or the kind" },
   { group: "Form", keys: "enter", text: "Create, or review a permanent VM's line" },
@@ -699,6 +701,11 @@ function footerText(rows) {
   return plural(c.total, "VM") + " · " + c.running + " running" + (c.pending > 0 ? " · " + c.pending + " pending" : "")
 }
 
+function startHere(state) {
+  return !!(state.everLoaded && state.reachable && !state.filtered &&
+    !state.upstreamError && !state.listError && state.showStopped)
+}
+
 // The one line shown when there is nothing to list. Says why.
 function emptyText(state) {
   if (!state.everLoaded) return "Loading…"
@@ -707,7 +714,9 @@ function emptyText(state) {
   if (state.upstreamError) return state.upstreamError
   if (state.listError) return "VM list failed: " + state.listError
   if (!state.showStopped) return "No running VMs"
-  return "No VMs yet — press c to create one"
+  if (startHere(state)) return state.presets > 0
+    ? "No VMs yet — press c to create one, or start from a preset"
+    : "No VMs yet — press c to create one"
 }
 
 // The CLI's or systemd's own error text, cut to the one line that says
@@ -932,6 +941,7 @@ var PATH_CHARS = "letters, digits and _ . / + -"
 function emptyForm(kind) {
   return {
     editing: false,
+    preset: "",
     describe: "",
     kind: kind === "permanent" ? "permanent" : "disposable",
     name: "",
@@ -1148,6 +1158,7 @@ function formSummary(form) {
 // disposable VM does not have; `create` marks ones an edit hides.
 
 var FORM_FIELDS = [
+  { key: "preset", widget: "preset", label: "Start from a preset", create: true, presets: true },
   { key: "describe", widget: "text", label: "Describe it, and let the agent fill the rest", hint: "e.g. a python box with 4 GB and my ~/src shared. Enter asks the agent.", create: true, agent: true },
   { key: "kind", widget: "kind", label: "Kind", hint: "space flips. Disposable: no root, no rebuild. Permanent: boots with the host, one line in apps.nix", create: true },
   { key: "name", widget: "text", label: "Name", hint: "Required", create: true },
@@ -1162,14 +1173,14 @@ var FORM_FIELDS = [
   { key: "shares", widget: "text", label: "Shares", hint: "host:guest pairs, space-separated, e.g. ~/src:/mnt/src", permanent: true, advanced: true }
 ]
 
-// `state` is {agent, aiAssist}: the describe field exists only when the
-// default agent is one this plugin can call, and the setting allows it.
+// `state` has agent/aiAssist and preset counts; optional rows need their source.
 function visibleFields(form, state) {
   var f = form || {}
   var out = []
   for (var i = 0; i < FORM_FIELDS.length; i++) {
     var field = FORM_FIELDS[i]
     if (field.create && f.editing === true) continue
+    if (field.presets && !(state && (state.presets > 0 || state.presetErrors > 0))) continue
     if (field.permanent && f.kind !== "permanent") continue
     if (field.disposable && f.kind === "permanent") continue
     if (field.advanced && f.advanced !== true) continue
@@ -1937,6 +1948,118 @@ function applyAgentReply(reply, form) {
     }
   }
   return { form: f, reasoning: reasoning, rejected: rejected }
+}
+
+var MAX_PRESETS = 9
+var PRESET_EXAMINED = 32
+var PRESET_MAX_BYTES = 16384
+
+function presetsArgv(configHome) {
+  var h = trim(configHome).replace(/\/+$/, "")
+  return h ? ["timeout", "2", "find", "-L", h + "/nixarchy/microvm/presets",
+    "-maxdepth", "1", "-type", "f", "-name", "*.json", "!", "-name", ".*",
+    "(", "-size", "+16k", "-printf", "\\036%f\\037\\025", "-o",
+    "-printf", "\\036%f\\037", "-exec", "cat", "{}", ";", ")"] : null
+}
+
+function parsePreset(text) {
+  function fail(error) { return { ok: false, reply: null, error: error } }
+  if (text === "\x15" || text.length > PRESET_MAX_BYTES) return fail("too large (over 16 KiB)")
+  var reply
+  try { reply = JSON.parse(text) } catch (e) { return fail("not valid JSON") }
+  if (!reply || typeof reply !== "object" || Array.isArray(reply)) return fail("not valid JSON")
+  var keys = Object.keys(reply)
+  for (var i = 0; i < keys.length; i++) {
+    if (!Object.prototype.hasOwnProperty.call(AGENT_FIELDS, keys[i]))
+      return fail('unknown key "' + sanitize(keys[i], 24) + '"')
+  }
+  if (Object.prototype.hasOwnProperty.call(reply, "shares")) {
+    if (!Array.isArray(reply.shares)) return fail("wrong type: shares")
+    if (reply.shares.length > 16) return fail("too many shares (over 16)")
+    for (var j = 0; j < reply.shares.length; j++) {
+      var share = reply.shares[j]
+      if (!share || typeof share !== "object" || Array.isArray(share) ||
+          Object.keys(share).length !== 2 ||
+          !Object.prototype.hasOwnProperty.call(share, "source") ||
+          !Object.prototype.hasOwnProperty.call(share, "mountPoint") ||
+          typeof share.source !== "string" || typeof share.mountPoint !== "string")
+        return fail("wrong type: shares")
+    }
+  }
+  var limits = { name: 64, template: 32, reasoning: 280 }
+  for (var key in limits) {
+    if (typeof reply[key] === "string" && reply[key].length > limits[key]) return fail("too long: " + key)
+  }
+  if (Array.isArray(reply.shares)) {
+    for (var s = 0; s < reply.shares.length; s++) {
+      if (reply.shares[s].source.length > 4096 || reply.shares[s].mountPoint.length > 4096)
+        return fail("too long: shares")
+    }
+  }
+  var rejected = applyAgentReply(reply, emptyForm()).rejected
+  return rejected.length ? fail("wrong type: " + rejected[0]) : { ok: true, reply: reply, error: "" }
+}
+
+function parsePresets(raw) {
+  var chunks = String(raw).split("\x1e")
+  var entries = []
+  for (var i = 0; i < chunks.length; i++) {
+    var cut = chunks[i].indexOf("\x1f")
+    if (cut !== -1) entries.push({ file: chunks[i].slice(0, cut), body: chunks[i].slice(cut + 1) })
+  }
+  entries.sort(function(a, b) { return a.file < b.file ? -1 : a.file > b.file ? 1 : 0 })
+  var presets = []
+  var errors = []
+  var more = Math.max(0, entries.length - PRESET_EXAMINED)
+  for (var j = 0; j < Math.min(entries.length, PRESET_EXAMINED); j++) {
+    var label = sanitize(entries[j].file.replace(/\.json$/, ""), 32) || "(unnamed)"
+    var parsed = parsePreset(entries[j].body)
+    if (!parsed.ok) errors.push(label + ".json: " + parsed.error)
+    else if (presets.length < MAX_PRESETS) presets.push({ label: label, reply: parsed.reply })
+    else more++
+  }
+  return { presets: presets, errors: errors, more: more }
+}
+
+function presetForm(preset) {
+  var form = applyAgentReply(preset.reply,
+    emptyForm(preset.reply.kind === "permanent" ? "permanent" : "disposable")).form
+  form.name = ""
+  form.describe = ""
+  form.preset = preset.label
+  return form
+}
+
+function presetTouched(reply) {
+  var touched = {}
+  for (var key in reply) {
+    if (Object.prototype.hasOwnProperty.call(reply, key) &&
+        Object.prototype.hasOwnProperty.call(AGENT_FIELDS, key) &&
+        key !== "name" && key !== "reasoning") touched[key] = true
+  }
+  return touched
+}
+
+function presetIndex(text, count) {
+  return typeof text === "string" && /^[1-9]$/.test(text) && Number(text) <= count ? Number(text) - 1 : -1
+}
+
+function presetLine(presets) {
+  var parts = []
+  for (var i = 0; i < presets.length; i++) parts.push((i + 1) + " " + presets[i].label)
+  return parts.join("   ")
+}
+
+function presetNote(errors, shown, more) {
+  var parts = []
+  if (errors.length) {
+    var first = []
+    for (var i = 0; i < Math.min(2, errors.length); i++) first.push(sanitize(errors[i], 120))
+    parts.push(errors.length + " preset" + (errors.length === 1 ? "" : "s") + " skipped: " +
+      first.join("; ") + (errors.length > 2 ? "; +" + (errors.length - 2) + " more" : ""))
+  }
+  if (more > 0) parts.push(shown + " of " + (shown + more) + " shown")
+  return parts.join("   ")
 }
 
 // ---------------------------------------------------------------- host files

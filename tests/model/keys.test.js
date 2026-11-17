@@ -68,3 +68,11 @@ test("v switches the overview and is on the sheet (#53)", () => {
   ok(src.includes('key === "v"'), "MicrovmView.qml does not bind v")
   ok(Model.SHORTCUTS.some(s => s.keys.split(/\s+/).includes("v")), "the sheet lost: v")
 })
+
+test("presets: digits and the empty-state count are wired (#55)", () => {
+  for (const f of ["CreateForm.qml", "MicrovmView.qml"]) {
+    ok(fs.readFileSync(path.join(ROOT, f), "utf8").includes("presetIndex"), f + " lost presetIndex")
+  }
+  const v = fs.readFileSync(path.join(ROOT, "MicrovmView.qml"), "utf8")
+  ok(v.includes("presets: MicrovmState.presets.length"), "the empty text lost its preset count")
+})
