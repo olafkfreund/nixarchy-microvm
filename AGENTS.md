@@ -43,7 +43,7 @@ form, never for an action.
 | `VmList.qml`, `CreateForm.qml`, `LogView.qml`, `ShortcutSheet.qml` | Drawing pieces used by the view. |
 | `Panel.qml` | The bar widget host: glyph, `KeyboardPanel` popup, and IPC target `nixarchy.microvm.bar`. |
 | `Menu.qml` | The menu host (manifest kind `menu`). A full-screen, undimmed layer that only catches a click outside the card; the card is sized and placed from the focused screen (`Model.menuGeometry`). |
-| `manifest.json` | Plugin id `nixarchy.microvm`, kinds `menu` + `bar-widget`, `keepLoaded: true`, settings schema. |
+| `manifest.json` | Plugin id `nixarchy.microvm`, kinds `menu` + `bar-widget`, settings schema. No `keepLoaded`: the view loads on first open. |
 | `flake.nix` | The package (an explicit `files` list, copied as real files) and `checks.<system>.default`. |
 | `share/omarchy-menu.jsonc` | The Omarchy menu row users paste in. |
 | `tests/` | Node tests for `Model.js` (`tests/run.js`). |
